@@ -23,6 +23,7 @@ public class PayrollService {
     private final SalarySlipRepository salarySlipRepository;
     private final EmployeeSalaryStructureRepository salaryStructureRepository;
     private final AttendanceRepository attendanceRepository;
+    private final HolidayRepository holidayRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
@@ -49,26 +50,60 @@ public class PayrollService {
 
         // Calculate attendance for the month
         YearMonth yearMonth = YearMonth.of(year, month);
-        int workingDays = yearMonth.lengthOfMonth(); // Simplified - can be enhanced with weekends/holidays
-
+        int totalDaysInMonth = yearMonth.lengthOfMonth();
         LocalDate startDate = yearMonth.atDay(1);
         LocalDate endDate = yearMonth.atEndOfMonth();
 
+        // Get Holidays
+        List<LocalDate> holidays = holidayRepository.findByDateBetweenOrderByDateAsc(startDate, endDate)
+                .stream().map(Holiday::getDate).collect(Collectors.toList());
+
+        // Get Attendance records
         List<Attendance> attendances = attendanceRepository.findAll().stream()
                 .filter(a -> a.getEmployee().getId().equals(employeeId))
                 .filter(a -> !a.getDate().isBefore(startDate) && !a.getDate().isAfter(endDate))
                 .collect(Collectors.toList());
+        Map<LocalDate, Attendance> attendanceMap = attendances.stream()
+                .collect(Collectors.toMap(Attendance::getDate, a -> a, (a1, a2) -> a1));
 
-        long presentDays = attendances.stream()
-                .filter(a -> a.getStatus() == Attendance.AttendanceStatus.PRESENT ||
-                        a.getStatus() == Attendance.AttendanceStatus.WORK_FROM_HOME)
-                .count();
+        int presentDaysCount = 0;
+        int leaveDaysCount = 0;
+        int payableDays = 0;
 
-        long leaveDays = attendances.stream()
-                .filter(a -> a.getStatus() == Attendance.AttendanceStatus.ON_LEAVE)
-                .count();
+        for (int day = 1; day <= totalDaysInMonth; day++) {
+            LocalDate date = yearMonth.atDay(day);
+            boolean isWeekend = (date.getDayOfWeek() == java.time.DayOfWeek.SATURDAY ||
+                    date.getDayOfWeek() == java.time.DayOfWeek.SUNDAY);
+            boolean isHoliday = holidays.contains(date);
 
-        int absentDays = workingDays - (int) presentDays - (int) leaveDays;
+            if (attendanceMap.containsKey(date)) {
+                Attendance a = attendanceMap.get(date);
+                if (a.getStatus() == Attendance.AttendanceStatus.PRESENT ||
+                        a.getStatus() == Attendance.AttendanceStatus.WORK_FROM_HOME) {
+                    presentDaysCount++;
+                    payableDays++;
+                } else if (a.getStatus() == Attendance.AttendanceStatus.ON_LEAVE) {
+                    leaveDaysCount++;
+                    payableDays++; // Assume paid leave
+                } else if (a.getStatus() == Attendance.AttendanceStatus.HOLIDAY ||
+                        a.getStatus() == Attendance.AttendanceStatus.WEEKEND) {
+                    payableDays++;
+                }
+                // ABSENT => not payable
+            } else {
+                // No record
+                if (isWeekend || isHoliday) {
+                    payableDays++;
+                }
+                // Weekday with no record => Absent/Unpaid
+            }
+        }
+
+        int workingDays = totalDaysInMonth;
+        int absentDays = workingDays - payableDays;
+
+        // Calculate pro-rated salary based on payable days
+        double attendanceRatio = (double) payableDays / workingDays;
 
         // Calculate salary
         Map<String, Double> earnings = new HashMap<>();
@@ -83,25 +118,31 @@ public class PayrollService {
                 .findFirst()
                 .orElse(0.0);
 
-        // Calculate pro-rated salary based on attendance
-        double attendanceRatio = (double) presentDays / workingDays;
-
+        // Process Earnings first
         for (EmployeeSalaryStructure structure : salaryStructure) {
             SalaryComponent component = structure.getComponent();
-            double amount = structure.getAmount();
-
-            // Apply pro-rata for earnings
             if (component.getType() == SalaryComponent.ComponentType.EARNING) {
+                double amount = structure.getAmount(); // Trust the saved structure amount
+
+                // Apply pro-rata
                 amount = amount * attendanceRatio;
                 earnings.put(component.getName(), amount);
                 grossSalary += amount;
-            } else {
-                // Deductions
-                if (component.getCalculationType() == SalaryComponent.CalculationType.PERCENTAGE_OF_BASIC) {
-                    amount = basicSalary * (component.getDefaultPercentage() / 100.0);
-                } else if (component.getCalculationType() == SalaryComponent.CalculationType.PERCENTAGE_OF_GROSS) {
+            }
+        }
+
+        // Process Deductions
+        for (EmployeeSalaryStructure structure : salaryStructure) {
+            SalaryComponent component = structure.getComponent();
+            if (component.getType() == SalaryComponent.ComponentType.DEDUCTION) {
+                double amount = structure.getAmount(); // Trust the saved structure amount
+
+                if (component.getCalculationType() == SalaryComponent.CalculationType.PERCENTAGE_OF_GROSS) {
                     amount = grossSalary * (component.getDefaultPercentage() / 100.0);
                 }
+
+                // Other types (FIXED, PERCENTAGE_OF_BASIC) use the saved amount directly
+
                 deductions.put(component.getName(), amount);
                 totalDeductions += amount;
             }
@@ -115,8 +156,8 @@ public class PayrollService {
         slip.setMonth(month);
         slip.setYear(year);
         slip.setWorkingDays(workingDays);
-        slip.setPresentDays((int) presentDays);
-        slip.setLeaveDays((int) leaveDays);
+        slip.setPresentDays(presentDaysCount);
+        slip.setLeaveDays(leaveDaysCount);
         slip.setAbsentDays(absentDays);
         slip.setGrossSalary(grossSalary);
         slip.setTotalDeductions(totalDeductions);
@@ -218,7 +259,9 @@ public class PayrollService {
 
         for (Employee employee : activeEmployees) {
             try {
-                SalarySlip slip = generateSalarySlip(employee.getId(), month, year, generatedBy);
+                // Fetch fresh employee to ensure session/transaction alignment
+                Employee freshEmployee = employeeRepository.findById(employee.getId()).orElse(employee);
+                SalarySlip slip = generateSalarySlip(freshEmployee.getId(), month, year, generatedBy);
                 generatedSlips.add(slip);
             } catch (Exception e) {
                 // Log error but continue with other employees

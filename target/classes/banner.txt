@@ -1,0 +1,38 @@
+
+${AnsiColor.BRIGHT_CYAN}
+  ██╗  ██╗ █████╗ ██████╗ ███╗   ███╗██╗██╗  ██╗ █████╗
+  ██║ ██╔╝██╔══██╗██╔══██╗████╗ ████║██║██║ ██╔╝██╔══██╗
+  █████╔╝ ███████║██████╔╝██╔████╔██║██║█████╔╝ ███████║
+  ██╔═██╗ ██╔══██║██╔══██╗██║╚██╔╝██║██║██╔═██╗ ██╔══██║
+  ██║  ██╗██║  ██║██║  ██║██║ ╚═╝ ██║██║██║  ██╗██║  ██║
+  ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝╚═╝  ╚═╝╚═╝  ╚═╝
+${AnsiColor.BRIGHT_WHITE}
+           ██╗  ██╗██████╗ ███╗   ███╗███████╗
+           ██║  ██║██╔══██╗████╗ ████║██╔════╝
+           ███████║██████╔╝██╔████╔██║███████╗
+           ██╔══██║██╔══██╗██║╚██╔╝██║╚════██║
+           ██║  ██║██║  ██║██║ ╚═╝ ██║███████║
+           ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝
+${AnsiColor.BRIGHT_YELLOW}
+  ┌─────────────────────────────────────────────────────────────┐
+  │          Human Resource Management System  v1.0.0           │
+  │          Empowering People · Streamlining Work              │
+  └─────────────────────────────────────────────────────────────┘
+${AnsiColor.BRIGHT_GREEN}
+  ✔  Spring Boot  : ${spring-boot.version}
+  ✔  Java         : ${java.version}
+  ✔  Profile      : ${spring.profiles.active:default}
+  ✔  Port         : 8080
+  ✔  API Base URL : http://localhost:8080/api
+  ✔  Swagger UI   : http://localhost:8080/swagger-ui.html
+
+${AnsiColor.BRIGHT_MAGENTA}
+  Modules: 👥 Employees  📅 Attendance  🌴 Leaves  💰 Payroll
+           📋 Appraisals  🔔 Notifications  📁 Documents
+
+${AnsiColor.BRIGHT_RED}  ⚠  Confidential – Authorized Access Only ${AnsiColor.DEFAULT}
+${AnsiColor.DEFAULT}
+  ─────────────────────────────────────────────────────────────
+  © 2026 Karmika Technologies Pvt. Ltd. All rights reserved.
+  ─────────────────────────────────────────────────────────────
+${AnsiColor.DEFAULT}

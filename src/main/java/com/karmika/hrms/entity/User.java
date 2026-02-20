@@ -84,6 +84,10 @@ public class User {
                 "FEATURE_VIEW_PAYROLL",
                 "FEATURE_ONBOARDING",
                 "FEATURE_VIEW_REPORTS")),
+        FINANCE(Set.of(
+                "FEATURE_VIEW_PAYROLL",
+                "FEATURE_APPROVE_PAYROLL",
+                "FEATURE_VIEW_REPORTS")),
         MANAGER(Set.of(
                 "FEATURE_APPROVE_LEAVES",
                 "FEATURE_VIEW_TEAM_REPORTS",

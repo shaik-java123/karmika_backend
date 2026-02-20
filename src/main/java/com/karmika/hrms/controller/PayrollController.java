@@ -29,32 +29,62 @@ public class PayrollController {
     private final EmployeeRepository employeeRepository;
     private final SalarySlipRepository salarySlipRepository;
     private final EmployeeSalaryStructureRepository salaryStructureRepository;
+    private final com.karmika.hrms.repository.SalaryComponentRepository salaryComponentRepository;
 
     /**
      * Set employee salary structure (ADMIN & HR)
+     * Accepts a list of flat maps: [{componentId, amount, isActive}]
      */
     @PostMapping("/employee/{employeeId}/salary-structure")
     @PreAuthorize("hasAnyRole('ADMIN', 'HR')")
     @Transactional
     public ResponseEntity<?> setEmployeeSalaryStructure(
             @PathVariable Long employeeId,
-            @RequestBody List<EmployeeSalaryStructure> structures) {
+            @RequestBody List<Map<String, Object>> structureRequests) {
         try {
             Employee employee = employeeRepository.findById(employeeId)
                     .orElseThrow(() -> new RuntimeException("Employee not found"));
 
-            // Delete existing structures
-            salaryStructureRepository.deleteByEmployee(employee);
+            // Step 1: Hard delete all existing structures for this employee
+            List<EmployeeSalaryStructure> existing = salaryStructureRepository.findByEmployee(employee);
+            if (!existing.isEmpty()) {
+                salaryStructureRepository.deleteAll(existing);
+                salaryStructureRepository.flush();
+            }
 
-            // Save new structures
-            for (EmployeeSalaryStructure structure : structures) {
+            // Step 2: Save each new structure from the flat request map
+            for (Map<String, Object> req : structureRequests) {
+                Object compIdObj = req.get("componentId");
+                Object amountObj = req.get("amount");
+                if (compIdObj == null || amountObj == null)
+                    continue;
+
+                Long componentId = Long.valueOf(compIdObj.toString());
+                Double amount = Double.valueOf(amountObj.toString());
+                Boolean isActive = req.get("isActive") != null
+                        ? Boolean.valueOf(req.get("isActive").toString())
+                        : true;
+
+                com.karmika.hrms.entity.SalaryComponent component = salaryComponentRepository
+                        .findById(componentId)
+                        .orElseThrow(() -> new RuntimeException("Salary Component not found: " + componentId));
+
+                EmployeeSalaryStructure structure = new EmployeeSalaryStructure();
                 structure.setEmployee(employee);
+                structure.setComponent(component);
+                structure.setAmount(amount);
+                structure.setIsActive(isActive);
                 salaryStructureRepository.save(structure);
             }
 
+            // Return a fresh read of the saved structures as flat DTOs
+            List<Map<String, Object>> savedDtos = buildStructureDtos(
+                    salaryStructureRepository.findByEmployeeAndIsActiveTrue(employee));
+
             return ResponseEntity.ok(Map.of(
                     "success", true,
-                    "message", "Salary structure updated successfully"));
+                    "message", "Salary structure updated successfully for " + employee.getFirstName(),
+                    "structures", savedDtos));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
@@ -64,6 +94,8 @@ public class PayrollController {
 
     /**
      * Get employee salary structure (ADMIN & HR)
+     * Returns flat DTOs to avoid Jackson serialization issues with deep entity
+     * graphs.
      */
     @GetMapping("/employee/{employeeId}/salary-structure")
     @PreAuthorize("hasAnyRole('ADMIN', 'HR')")
@@ -75,14 +107,38 @@ public class PayrollController {
             List<EmployeeSalaryStructure> structures = salaryStructureRepository
                     .findByEmployeeAndIsActiveTrue(employee);
 
+            List<Map<String, Object>> dtos = buildStructureDtos(structures);
+
             return ResponseEntity.ok(Map.of(
                     "success", true,
-                    "structures", structures));
+                    "structures", dtos));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
                     "error", e.getMessage()));
         }
+    }
+
+    /**
+     * Helper: convert EmployeeSalaryStructure list to flat, safe maps for JSON
+     * response.
+     */
+    private List<Map<String, Object>> buildStructureDtos(List<EmployeeSalaryStructure> structures) {
+        List<Map<String, Object>> dtos = new java.util.ArrayList<>();
+        for (EmployeeSalaryStructure s : structures) {
+            Map<String, Object> dto = new java.util.LinkedHashMap<>();
+            dto.put("id", s.getId());
+            dto.put("componentId", s.getComponent().getId());
+            dto.put("componentCode", s.getComponent().getCode());
+            dto.put("componentName", s.getComponent().getName());
+            dto.put("componentType", s.getComponent().getType().name());
+            dto.put("calculationType", s.getComponent().getCalculationType().name());
+            dto.put("defaultPercentage", s.getComponent().getDefaultPercentage());
+            dto.put("amount", s.getAmount());
+            dto.put("isActive", s.getIsActive());
+            dtos.add(dto);
+        }
+        return dtos;
     }
 
     /**
@@ -150,10 +206,10 @@ public class PayrollController {
     }
 
     /**
-     * Get all salary slips for a month/year (ADMIN & HR)
+     * Get all salary slips for a month/year (ADMIN, HR & FINANCE)
      */
     @GetMapping("/slips")
-    @PreAuthorize("hasAnyRole('ADMIN', 'HR')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HR', 'FINANCE')")
     public ResponseEntity<?> getSalarySlips(
             @RequestParam(required = false) Integer month,
             @RequestParam(required = false) Integer year) {
@@ -280,10 +336,56 @@ public class PayrollController {
     }
 
     /**
-     * Approve salary slip (ADMIN only)
+     * Regenerate (refresh) a salary slip with latest structure (ADMIN & HR)
+     */
+    @PostMapping("/slip/{id}/regenerate")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HR')")
+    @Transactional
+    public ResponseEntity<?> regenerateSalarySlip(
+            @PathVariable Long id,
+            Authentication auth) {
+        try {
+            SalarySlip existingSlip = salarySlipRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("Salary slip not found"));
+
+            if (existingSlip.getApprovalStatus() == SalarySlip.ApprovalStatus.APPROVED) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "error", "Cannot regenerate an already approved slip"));
+            }
+
+            String username = auth.getName();
+            Employee generatedBy = employeeRepository.findAll().stream()
+                    .filter(emp -> emp.getUser() != null && emp.getUser().getUsername().equals(username))
+                    .findFirst()
+                    .orElse(null);
+
+            // Delete old slip, then regenerate
+            Long employeeId = existingSlip.getEmployee().getId();
+            Integer month = existingSlip.getMonth();
+            Integer year = existingSlip.getYear();
+            salarySlipRepository.delete(existingSlip);
+            salarySlipRepository.flush();
+
+            SalarySlip newSlip = payrollService.generateSalarySlip(employeeId, month, year, generatedBy);
+            SalarySlipDTO dto = payrollService.convertToDTO(newSlip);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Salary slip regenerated with latest values",
+                    "slip", dto));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Approve salary slip (ADMIN & FINANCE)
      */
     @PutMapping("/slip/{id}/approve")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'FINANCE')")
     public ResponseEntity<?> approveSalarySlip(
             @PathVariable Long id,
             @RequestBody(required = false) Map<String, String> request,
@@ -332,10 +434,10 @@ public class PayrollController {
     }
 
     /**
-     * Reject salary slip (ADMIN only)
+     * Reject salary slip (ADMIN & FINANCE)
      */
     @PutMapping("/slip/{id}/reject")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'FINANCE')")
     public ResponseEntity<?> rejectSalarySlip(
             @PathVariable Long id,
             @RequestBody Map<String, String> request,
@@ -376,10 +478,10 @@ public class PayrollController {
     }
 
     /**
-     * Get slips pending approval (ADMIN only)
+     * Get slips pending approval (ADMIN & FINANCE)
      */
     @GetMapping("/slips/pending-approval")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'FINANCE')")
     public ResponseEntity<?> getPendingApprovalSlips() {
         try {
             List<SalarySlip> slips = salarySlipRepository.findAll().stream()
@@ -402,10 +504,10 @@ public class PayrollController {
     }
 
     /**
-     * Bulk approve salary slips (ADMIN only)
+     * Bulk approve salary slips (ADMIN & FINANCE)
      */
     @PostMapping("/slips/bulk-approve")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'FINANCE')")
     public ResponseEntity<?> bulkApproveSalarySlips(
             @RequestBody Map<String, Object> request,
             Authentication auth) {

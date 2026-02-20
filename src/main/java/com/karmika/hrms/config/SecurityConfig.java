@@ -82,6 +82,17 @@ public class SecurityConfig {
                         .requestMatchers("/api/departments/list").authenticated()
                         .requestMatchers("/api/dashboard/**").authenticated()
 
+                        // APPRAISAL endpoints
+                        .requestMatchers("/api/appraisals/competencies").authenticated()
+                        .requestMatchers("/api/appraisals/my-appraisals").authenticated()
+                        .requestMatchers("/api/appraisals/my-reviews/**").authenticated()
+                        .requestMatchers("/api/appraisals/reviews/**").authenticated()
+                        .requestMatchers("/api/appraisals/*/peer-reviewers").authenticated()
+                        .requestMatchers("/api/appraisals/cycles/active").authenticated()
+                        .requestMatchers("/api/appraisals/cycles").hasAnyRole("ADMIN", "HR", "MANAGER")
+                        .requestMatchers("/api/appraisals/cycles/**").hasAnyRole("ADMIN", "HR")
+                        .requestMatchers("/api/appraisals/*/approve").hasAnyRole("ADMIN", "HR")
+
                         // Default - require authentication
                         .anyRequest().authenticated())
                 .sessionManagement(session -> session
