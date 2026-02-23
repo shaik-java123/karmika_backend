@@ -50,3 +50,19 @@ springdoc:
     operations-sorter: method
     tags-sorter: alpha
     display-request-duration: true
+
+# AI Chatbot — Ollama (local, no API key needed)
+# Start Ollama: ollama serve
+# Model must be pulled first: ollama pull tinyllama
+ollama:
+  base-url: http://localhost:11434
+  model: tinyllama:1.1b
+# Gemini AI Chatbot Configuration
+# Get your free API key at: https://aistudio.google.com/apikey
+#gemini:
+  #api:
+    #key: AIzaSyBHNJDpuKC12KdkSpVvybPqAyGaQCuMZ6k
+  # Free-tier quotas:
+  #   gemini-1.5-flash  → 15 RPM / 1,500 RPD  ← recommended for free tier
+  #   gemini-2.0-flash  → 10 RPM /   200 RPD
+  #model: gemini-1.5-flash  

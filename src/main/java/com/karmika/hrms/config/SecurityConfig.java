@@ -105,6 +105,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/appraisals/*/approve").hasAnyRole("ADMIN", "HR")
 
                         // Default - require authentication
+                        .requestMatchers("/api/chatbot/**").authenticated()
                         .anyRequest().authenticated())
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
