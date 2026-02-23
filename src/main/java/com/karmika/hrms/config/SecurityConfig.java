@@ -43,7 +43,18 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/util/**").permitAll() // Debug utilities - Remove in production!
                         .requestMatchers("/error").permitAll()
+                        .requestMatchers("/uploads/**").permitAll() // Serve uploaded files (onboarding docs, photos)
+                                                                    // publicly
 
+                        // Swagger UI / OpenAPI
+                        .requestMatchers(
+                                "/swagger-ui.html",
+                                "/swagger-ui/**",
+                                "/v3/api-docs",
+                                "/v3/api-docs/**",
+                                "/swagger-resources/**",
+                                "/webjars/**")
+                        .permitAll()
                         // ADMIN-only endpoints - Full system control
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/users/create").hasRole("ADMIN")

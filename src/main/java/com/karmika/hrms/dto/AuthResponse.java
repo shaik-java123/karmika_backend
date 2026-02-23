@@ -11,6 +11,7 @@ public class AuthResponse {
     private String token;
     private String type = "Bearer";
     private Long userId;
+    private Long employeeId; // Employee table PK (null for ADMIN-only accounts)
     private String username;
     private String email;
     private String role;
@@ -25,10 +26,11 @@ public class AuthResponse {
         this.passwordChangeRequired = false;
     }
 
-    public AuthResponse(String token, Long userId, String username, String email, String role,
+    public AuthResponse(String token, Long userId, Long employeeId, String username, String email, String role,
             boolean passwordChangeRequired) {
         this.token = token;
         this.userId = userId;
+        this.employeeId = employeeId;
         this.username = username;
         this.email = email;
         this.role = role;

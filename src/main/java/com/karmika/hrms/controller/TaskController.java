@@ -251,6 +251,15 @@ public class TaskController {
                         if (taskData.containsKey("priority")) {
                             task.setPriority(Task.TaskPriority.valueOf((String) taskData.get("priority")));
                         }
+                        // Allow re-assigning to a different employee
+                        if (taskData.containsKey("assignedToId")) {
+                            Long newAssigneeId = Long.valueOf(taskData.get("assignedToId").toString());
+                            Employee newAssignee = employeeRepository.findById(newAssigneeId)
+                                    .orElseThrow(() -> new RuntimeException("Target employee not found"));
+                            task.setAssignedTo(newAssignee);
+                            task.setStatus(Task.TaskStatus.TODO); // reset status on reassign
+                            task.setCompletedAt(null);
+                        }
 
                         taskRepository.save(task);
 
@@ -260,6 +269,71 @@ public class TaskController {
                                 "task", task));
                     })
                     .orElse(ResponseEntity.notFound().build());
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Reassign a task to a different employee (task creator only)
+     * POST /api/tasks/{id}/reassign
+     * Body: { assignedToId, reason, resetStatus }
+     */
+    @PostMapping("/{id}/reassign")
+    @PreAuthorize("hasAnyRole('MANAGER', 'ADMIN', 'HR')")
+    public ResponseEntity<?> reassignTask(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> body,
+            Authentication auth) {
+        try {
+            String username = auth.getName();
+            Employee requester = employeeRepository.findAll().stream()
+                    .filter(emp -> emp.getUser() != null && emp.getUser().getUsername().equals(username))
+                    .findFirst()
+                    .orElseThrow(() -> new RuntimeException("Employee not found"));
+
+            Task task = taskRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("Task not found"));
+
+            // Only the original assigner can reassign
+            if (!task.getAssignedBy().getId().equals(requester.getId())) {
+                return ResponseEntity.status(403).body(Map.of(
+                        "success", false,
+                        "error", "Only the task creator can reassign this task"));
+            }
+
+            Long newAssigneeId = Long.valueOf(body.get("assignedToId").toString());
+            Employee newAssignee = employeeRepository.findById(newAssigneeId)
+                    .orElseThrow(() -> new RuntimeException("Target employee not found with ID: " + newAssigneeId));
+
+            String reason = body.containsKey("reason") ? (String) body.get("reason") : null;
+
+            // Update task
+            Employee previousAssignee = task.getAssignedTo();
+            task.setAssignedTo(newAssignee);
+            task.setStatus(Task.TaskStatus.TODO); // always reset to TODO on reassign
+            task.setCompletedAt(null);
+            if (reason != null && !reason.isBlank()) {
+                task.setComments("Reassigned: " + reason);
+            }
+
+            taskRepository.save(task);
+
+            // Notify new assignee
+            notificationService.notifyTaskAssignment(
+                    newAssignee,
+                    requester,
+                    task.getTitle(),
+                    task.getId());
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", String.format("Task reassigned from %s %s to %s %s",
+                            previousAssignee.getFirstName(), previousAssignee.getLastName(),
+                            newAssignee.getFirstName(), newAssignee.getLastName()),
+                    "task", task));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of(
                     "success", false,

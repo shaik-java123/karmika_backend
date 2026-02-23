@@ -3,7 +3,9 @@ package com.karmika.hrms.service;
 import com.karmika.hrms.dto.AuthResponse;
 import com.karmika.hrms.dto.LoginRequest;
 import com.karmika.hrms.dto.RegisterRequest;
+import com.karmika.hrms.entity.Employee;
 import com.karmika.hrms.entity.User;
+import com.karmika.hrms.repository.EmployeeRepository;
 import com.karmika.hrms.repository.UserRepository;
 import com.karmika.hrms.security.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +26,7 @@ import java.util.HashMap;
 public class AuthService {
 
     private final UserRepository userRepository;
+    private final EmployeeRepository employeeRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final JwtTokenProvider tokenProvider;
@@ -98,6 +101,68 @@ public class AuthService {
         userRepository.save(user);
     }
 
+    /**
+     * Generates a 6-digit reset token for the given email.
+     * Token expires in 15 minutes.
+     * Since no SMTP is configured, the token is returned in the response
+     * so an admin can share it with the user securely.
+     */
+    public Map<String, Object> forgotPassword(String email) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException(
+                        "No account found with email: " + email));
+
+        if (!user.getActive()) {
+            throw new RuntimeException("This account is disabled. Contact your administrator.");
+        }
+
+        // Generate a 6-digit numeric OTP
+        SecureRandom random = new SecureRandom();
+        String token = String.format("%06d", random.nextInt(1_000_000));
+
+        user.setResetToken(token);
+        user.setResetTokenExpiry(java.time.LocalDateTime.now().plusMinutes(15));
+        userRepository.save(user);
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("message", "Reset token generated. Share this token with the user to reset their password.");
+        result.put("username", user.getUsername());
+        result.put("token", token); // Displayed in UI since no email is configured
+        result.put("expiresInMinutes", 15);
+        return result;
+    }
+
+    /**
+     * Resets password using the token issued by forgotPassword.
+     */
+    public void resetPassword(String email, String token, String newPassword) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("No account found with this email."));
+
+        if (user.getResetToken() == null || !user.getResetToken().equals(token)) {
+            throw new RuntimeException("Invalid reset token. Please request a new one.");
+        }
+
+        if (user.getResetTokenExpiry() == null ||
+                java.time.LocalDateTime.now().isAfter(user.getResetTokenExpiry())) {
+            // Clear expired token
+            user.setResetToken(null);
+            user.setResetTokenExpiry(null);
+            userRepository.save(user);
+            throw new RuntimeException("This reset token has expired. Please request a new one.");
+        }
+
+        if (newPassword.length() < 6) {
+            throw new RuntimeException("Password must be at least 6 characters.");
+        }
+
+        user.setPassword(passwordEncoder.encode(newPassword));
+        user.setPasswordChangeRequired(false);
+        user.setResetToken(null);
+        user.setResetTokenExpiry(null);
+        userRepository.save(user);
+    }
+
     private String generateUsername(String firstName, String lastName) {
         String baseUsername = (firstName.toLowerCase() + "." + lastName.toLowerCase()).replaceAll("[^a-z0-9.]", "");
         String username = baseUsername;
@@ -162,7 +227,13 @@ public class AuthService {
         String token = tokenProvider.generateToken(authentication);
 
         System.out.println("Login successful! Token generated.");
-        return new AuthResponse(token, user.getId(), user.getUsername(), user.getEmail(), user.getRole().name(),
-                user.getPasswordChangeRequired());
+
+        // Look up the associated Employee record to include employeeId in the response
+        Long employeeId = employeeRepository.findByEmail(user.getEmail())
+                .map(Employee::getId)
+                .orElse(null);
+
+        return new AuthResponse(token, user.getId(), employeeId, user.getUsername(),
+                user.getEmail(), user.getRole().name(), user.getPasswordChangeRequired());
     }
 }

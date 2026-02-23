@@ -58,6 +58,12 @@ public class Notification {
         TASK_ASSIGNED,
         TASK_COMPLETED,
         ANNOUNCEMENT,
-        INFO
+        INFO,
+        ONBOARDING_STARTED,
+        ONBOARDING_TASK_SUBMITTED,
+        ONBOARDING_TASK_APPROVED,
+        ONBOARDING_TASK_REJECTED,
+        ONBOARDING_TASK_WAIVED,
+        ONBOARDING_DOCUMENT_SHARED
     }
 }

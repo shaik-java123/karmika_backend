@@ -1,3 +1,4 @@
+E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\repository\GoalRepository.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\dto\SalarySlipDTO.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\repository\LeaveApplicationRepository.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\entity\User.java
@@ -6,6 +7,7 @@ E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\entity\AppraisalRati
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\entity\Task.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\config\SecurityConfig.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\controller\LeaveController.java
+E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\controller\GoalController.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\service\NotificationService.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\repository\CompetencyRepository.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\controller\PolicyController.java
@@ -19,6 +21,8 @@ E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\service\AppraisalSer
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\dto\AuthResponse.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\service\PayrollService.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\repository\AppraisalRatingRepository.java
+E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\repository\OnboardingDocumentRepository.java
+E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\config\WebConfig.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\service\AuthService.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\entity\AppraisalCycle.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\controller\AttendanceController.java
@@ -32,18 +36,23 @@ E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\repository\Appraisal
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\repository\TaskRepository.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\dto\ChangePasswordRequest.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\controller\NotificationController.java
+E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\repository\OnboardingChecklistRepository.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\entity\AppraisalReview.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\repository\AppraisalRepository.java
+E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\service\OnboardingService.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\controller\LeaveTypeController.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\entity\SalarySlip.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\entity\Department.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\dto\AppraisalDTO.java
+E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\controller\OnboardingController.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\dto\DailyAttendanceDTO.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\util\PasswordHashGenerator.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\repository\SalarySlipRepository.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\entity\LeaveType.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\controller\HolidayController.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\entity\Announcement.java
+E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\entity\Goal.java
+E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\entity\OnboardingDocument.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\KarmikaHrmsApplication.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\dto\AppraisalReviewDTO.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\controller\UtilController.java
@@ -52,6 +61,7 @@ E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\entity\Employee.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\config\DataInitializer.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\repository\LeaveBalanceRepository.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\dto\AppraisalCycleDTO.java
+E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\entity\OnboardingChecklist.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\repository\NotificationRepository.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\repository\UserRepository.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\controller\DepartmentController.java

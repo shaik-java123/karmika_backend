@@ -27,85 +27,91 @@ import java.util.stream.Collectors;
 @EntityListeners(AuditingEntityListener.class)
 public class User {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        private Long id;
 
-    @Column(nullable = false, unique = true)
-    private String username;
+        @Column(nullable = false, unique = true)
+        private String username;
 
-    @Column(nullable = false, unique = true)
-    private String email;
+        @Column(nullable = false, unique = true)
+        private String email;
 
-    @Column(nullable = false)
-    private String password;
+        @Column(nullable = false)
+        private String password;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private Role role = Role.EMPLOYEE;
+        @Enumerated(EnumType.STRING)
+        @Column(nullable = false)
+        private Role role = Role.EMPLOYEE;
 
-    @Column(nullable = false)
-    private Boolean active = true;
+        @Column(nullable = false)
+        private Boolean active = true;
 
-    @Column(nullable = false)
-    private Boolean passwordChangeRequired = false;
+        @Column(nullable = false)
+        private Boolean passwordChangeRequired = false;
 
-    @CreatedDate
-    @Column(nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+        @Column(name = "reset_token")
+        private String resetToken;
 
-    @LastModifiedDate
-    private LocalDateTime updatedAt;
+        @Column(name = "reset_token_expiry")
+        private LocalDateTime resetTokenExpiry;
 
-    // Method to get authorities for Spring Security
-    public Collection<? extends GrantedAuthority> getAuthorities() {
-        List<SimpleGrantedAuthority> authorities = new ArrayList<>();
-        // Add the base Role authority
-        authorities.add(new SimpleGrantedAuthority("ROLE_" + this.role.name()));
+        @CreatedDate
+        @Column(nullable = false, updatable = false)
+        private LocalDateTime createdAt;
 
-        // Add feature-level authorities derived from the role
-        authorities.addAll(this.role.getPermissions().stream()
-                .map(SimpleGrantedAuthority::new)
-                .collect(Collectors.toList()));
+        @LastModifiedDate
+        private LocalDateTime updatedAt;
 
-        return authorities;
-    }
+        // Method to get authorities for Spring Security
+        public Collection<? extends GrantedAuthority> getAuthorities() {
+                List<SimpleGrantedAuthority> authorities = new ArrayList<>();
+                // Add the base Role authority
+                authorities.add(new SimpleGrantedAuthority("ROLE_" + this.role.name()));
 
-    public enum Role {
-        ADMIN(Set.of(
-                "FEATURE_MANAGE_USERS",
-                "FEATURE_MANAGE_SETTINGS",
-                "FEATURE_DELETE_RECORDS",
-                "FEATURE_MANAGE_DEPARTMENTS",
-                "FEATURE_VIEW_AUDIT_LOGS")),
-        HR(Set.of(
-                "FEATURE_MANAGE_EMPLOYEES",
-                "FEATURE_MANAGE_LEAVES",
-                "FEATURE_VIEW_PAYROLL",
-                "FEATURE_ONBOARDING",
-                "FEATURE_VIEW_REPORTS")),
-        FINANCE(Set.of(
-                "FEATURE_VIEW_PAYROLL",
-                "FEATURE_APPROVE_PAYROLL",
-                "FEATURE_VIEW_REPORTS")),
-        MANAGER(Set.of(
-                "FEATURE_APPROVE_LEAVES",
-                "FEATURE_VIEW_TEAM_REPORTS",
-                "FEATURE_ASSIGN_TASKS",
-                "FEATURE_VIEW_TEAM_ATTENDANCE")),
-        EMPLOYEE(Set.of(
-                "FEATURE_VIEW_SELF_PROFILE",
-                "FEATURE_APPLY_LEAVE",
-                "FEATURE_VIEW_SELF_TASKS"));
+                // Add feature-level authorities derived from the role
+                authorities.addAll(this.role.getPermissions().stream()
+                                .map(SimpleGrantedAuthority::new)
+                                .collect(Collectors.toList()));
 
-        private final Set<String> permissions;
-
-        Role(Set<String> permissions) {
-            this.permissions = permissions;
+                return authorities;
         }
 
-        public Set<String> getPermissions() {
-            return permissions;
+        public enum Role {
+                ADMIN(Set.of(
+                                "FEATURE_MANAGE_USERS",
+                                "FEATURE_MANAGE_SETTINGS",
+                                "FEATURE_DELETE_RECORDS",
+                                "FEATURE_MANAGE_DEPARTMENTS",
+                                "FEATURE_VIEW_AUDIT_LOGS")),
+                HR(Set.of(
+                                "FEATURE_MANAGE_EMPLOYEES",
+                                "FEATURE_MANAGE_LEAVES",
+                                "FEATURE_VIEW_PAYROLL",
+                                "FEATURE_ONBOARDING",
+                                "FEATURE_VIEW_REPORTS")),
+                FINANCE(Set.of(
+                                "FEATURE_VIEW_PAYROLL",
+                                "FEATURE_APPROVE_PAYROLL",
+                                "FEATURE_VIEW_REPORTS")),
+                MANAGER(Set.of(
+                                "FEATURE_APPROVE_LEAVES",
+                                "FEATURE_VIEW_TEAM_REPORTS",
+                                "FEATURE_ASSIGN_TASKS",
+                                "FEATURE_VIEW_TEAM_ATTENDANCE")),
+                EMPLOYEE(Set.of(
+                                "FEATURE_VIEW_SELF_PROFILE",
+                                "FEATURE_APPLY_LEAVE",
+                                "FEATURE_VIEW_SELF_TASKS"));
+
+                private final Set<String> permissions;
+
+                Role(Set<String> permissions) {
+                        this.permissions = permissions;
+                }
+
+                public Set<String> getPermissions() {
+                        return permissions;
+                }
         }
-    }
 }

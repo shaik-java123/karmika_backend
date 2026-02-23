@@ -10,7 +10,7 @@ spring:
   
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: update
     show-sql: true
     properties:
       hibernate:
@@ -39,3 +39,14 @@ app:
   name: Karmika HRMS
   version: 1.0.0
   timezone: Asia/Kolkata
+  upload-dir: uploads
+
+# SpringDoc OpenAPI (Swagger UI)
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+    display-request-duration: true
