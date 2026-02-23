@@ -58,6 +58,28 @@ public class DashboardController {
                                 stats.put("totalEmployees", totalEmployees);
                                 stats.put("activeEmployees", activeEmployees);
                                 stats.put("totalDepartments", departmentRepository.count());
+                                stats.put("projectCount", 12); // adding project count
+
+                                // Personal Admin Attendance Status
+                                if (employee != null) {
+                                        Attendance todayAtt = attendanceRepository.findAll().stream()
+                                                        .filter(att -> att.getEmployee().getId()
+                                                                        .equals(employee.getId()))
+                                                        .filter(att -> att.getDate().equals(LocalDate.now()))
+                                                        .findFirst()
+                                                        .orElse(null);
+
+                                        if (todayAtt != null) {
+                                                stats.put("todayCheckIn",
+                                                                todayAtt.getCheckInTime() != null
+                                                                                ? todayAtt.getCheckInTime().toString()
+                                                                                : null);
+                                                stats.put("checkedIn", true);
+                                        } else {
+                                                stats.put("todayCheckIn", null);
+                                                stats.put("checkedIn", false);
+                                        }
+                                }
                                 stats.put("pendingLeaves", leaveRepository.findAll().stream()
                                                 .filter(leave -> leave
                                                                 .getStatus() == LeaveApplication.LeaveStatus.PENDING)
@@ -308,6 +330,144 @@ public class DashboardController {
                         return ResponseEntity.badRequest().body(Map.of(
                                         "success", false,
                                         "error", e.getMessage()));
+                }
+        }
+
+        /**
+         * Get Team Analytics for HR/Admin/Manager
+         * GET /api/dashboard/team-analytics
+         */
+        @GetMapping("/team-analytics")
+        public ResponseEntity<?> getTeamAnalytics(Authentication auth) {
+                try {
+                        String role = auth.getAuthorities().iterator().next().getAuthority();
+                        Map<String, Object> analytics = new HashMap<>();
+
+                        if (role.equals("ROLE_ADMIN") || role.equals("ROLE_HR") || role.equals("ROLE_MANAGER")) {
+                                long totalEmployees = employeeRepository.count();
+
+                                // Leaves taken in the entire system this month
+                                LocalDate firstDayOfMonth = LocalDate.now().withDayOfMonth(1);
+                                long leavesTaken = leaveRepository.findAll().stream()
+                                                .filter(l -> l.getStatus() == LeaveApplication.LeaveStatus.APPROVED)
+                                                .filter(l -> !l.getStartDate().isBefore(firstDayOfMonth))
+                                                .count();
+
+                                // Today's Attendance
+                                long todayPresent = attendanceRepository.findAll().stream()
+                                                .filter(att -> att.getDate().equals(LocalDate.now()))
+                                                .count();
+
+                                // Mock project data because there are no project entities
+                                long allocatedResource = (long) (totalEmployees * 0.8);
+                                long benchResource = totalEmployees - allocatedResource;
+                                long projectCount = 12; // Example fixed value
+
+                                analytics.put("totalEmployees", totalEmployees);
+                                analytics.put("attendanceCount", todayPresent);
+                                analytics.put("leavesTaken", leavesTaken);
+                                analytics.put("allocatedResource", allocatedResource);
+                                analytics.put("benchResource", benchResource);
+                                analytics.put("projectCount", projectCount);
+
+                                // Adding percentage for display
+                                double attendanceRate = totalEmployees > 0
+                                                ? ((double) todayPresent / totalEmployees) * 100
+                                                : 0;
+                                analytics.put("attendanceRate", String.format("%.1f", attendanceRate));
+
+                                // Drill Down Details
+                                List<Map<String, Object>> employeeDetails = employeeRepository.findAll().stream()
+                                                .map(emp -> {
+                                                        Map<String, Object> map = new HashMap<>();
+                                                        map.put("id", emp.getId());
+                                                        map.put("employeeId", emp.getEmployeeId());
+                                                        map.put("name", emp.getFirstName() + " "
+                                                                        + (emp.getLastName() != null ? emp.getLastName()
+                                                                                        : ""));
+                                                        map.put("department",
+                                                                        emp.getDepartment() != null
+                                                                                        ? emp.getDepartment().getName()
+                                                                                        : "N/A");
+                                                        map.put("designation", emp.getDesignation());
+                                                        map.put("status",
+                                                                        emp.getStatus() != null ? emp.getStatus().name()
+                                                                                        : "N/A");
+                                                        return map;
+                                                })
+                                                .collect(Collectors.toList());
+
+                                List<Map<String, Object>> todayAttendanceDetails = attendanceRepository.findAll()
+                                                .stream()
+                                                .filter(att -> att.getDate().equals(LocalDate.now()))
+                                                .map(att -> {
+                                                        Map<String, Object> map = new HashMap<>();
+                                                        map.put("employeeName", att.getEmployee().getFirstName() + " "
+                                                                        + (att.getEmployee().getLastName() != null
+                                                                                        ? att.getEmployee()
+                                                                                                        .getLastName()
+                                                                                        : ""));
+                                                        map.put("employeeId", att.getEmployee().getEmployeeId());
+                                                        map.put("checkInTime",
+                                                                        att.getCheckInTime() != null
+                                                                                        ? att.getCheckInTime()
+                                                                                                        .toString()
+                                                                                        : "N/A");
+                                                        map.put("checkOutTime",
+                                                                        att.getCheckOutTime() != null
+                                                                                        ? att.getCheckOutTime()
+                                                                                                        .toString()
+                                                                                        : "N/A");
+                                                        map.put("status",
+                                                                        att.getStatus() != null ? att.getStatus().name()
+                                                                                        : "N/A");
+                                                        return map;
+                                                })
+                                                .collect(Collectors.toList());
+
+                                List<Map<String, Object>> monthlyLeaveDetails = leaveRepository.findAll().stream()
+                                                .filter(l -> l.getStatus() == LeaveApplication.LeaveStatus.APPROVED)
+                                                .filter(l -> !l.getStartDate().isBefore(firstDayOfMonth))
+                                                .map(l -> {
+                                                        Map<String, Object> map = new HashMap<>();
+                                                        map.put("employeeName", l.getEmployee().getFirstName() + " "
+                                                                        + (l.getEmployee().getLastName() != null
+                                                                                        ? l.getEmployee().getLastName()
+                                                                                        : ""));
+                                                        map.put("employeeId", l.getEmployee().getEmployeeId());
+                                                        map.put("leaveType",
+                                                                        l.getLeaveType() != null
+                                                                                        ? l.getLeaveType().getName()
+                                                                                        : "N/A");
+                                                        map.put("startDate", l.getStartDate().toString());
+                                                        map.put("endDate", l.getEndDate().toString());
+                                                        map.put("days", l.getNumberOfDays());
+                                                        return map;
+                                                })
+                                                .collect(Collectors.toList());
+
+                                List<Map<String, Object>> projectDetails = new ArrayList<>();
+                                for (int i = 1; i <= projectCount; i++) {
+                                        Map<String, Object> map = new HashMap<>();
+                                        map.put("id", "PROJ-" + i);
+                                        map.put("name", "Strategic Project " + (char) ('A' + (i - 1) % 26) + " " + i);
+                                        map.put("status", i % 3 == 0 ? "Completed"
+                                                        : (i % 2 == 0 ? "In Progress" : "Planning"));
+                                        map.put("deadline", LocalDate.now().plusDays(i * 10).toString());
+                                        projectDetails.add(map);
+                                }
+
+                                analytics.put("employeeDetails", employeeDetails);
+                                analytics.put("todayAttendanceDetails", todayAttendanceDetails);
+                                analytics.put("monthlyLeaveDetails", monthlyLeaveDetails);
+                                analytics.put("projectDetails", projectDetails);
+
+                                return ResponseEntity.ok(analytics);
+                        } else {
+                                return ResponseEntity.status(403).body(Map.of("error", "Access denied"));
+                        }
+                } catch (Exception e) {
+                        return ResponseEntity.badRequest().body(Map.of("success", false, "error", e.getMessage()));
                 }
         }
 }
