@@ -23,6 +23,13 @@ public class AppraisalService {
     private final AppraisalRatingRepository ratingRepository;
     private final CompetencyRepository competencyRepository;
     private final EmployeeRepository employeeRepository;
+    private final GoalRepository goalRepository;
+
+    // ── Rating weights ──────────────────────────────────────────────────────
+    /** Fraction of final score contributed by goal achievement (0–100 %). */
+    private static final double GOAL_WEIGHT = 0.60;
+    /** Fraction of final score contributed by competency review (0–100 %). */
+    private static final double COMPETENCY_WEIGHT = 0.40;
 
     /**
      * Create a new appraisal cycle
@@ -171,7 +178,7 @@ public class AppraisalService {
     @Transactional
     public void submitReview(Long reviewId, String overallComments, String strengths,
             String areasOfImprovement, Map<Long, Integer> competencyRatings,
-            Map<Long, String> competencyComments) {
+            Map<Long, String> competencyComments, boolean isDraft) {
         AppraisalReview review = reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new RuntimeException("Review not found"));
 
@@ -216,8 +223,14 @@ public class AppraisalService {
         // Calculate overall rating
         double overallRating = totalWeight > 0 ? totalRating / totalWeight : 0;
         review.setOverallRating(overallRating);
-        review.setStatus(AppraisalReview.ReviewStatus.SUBMITTED);
-        review.setSubmittedAt(LocalDateTime.now());
+
+        if (isDraft) {
+            review.setStatus(AppraisalReview.ReviewStatus.IN_PROGRESS);
+        } else {
+            review.setStatus(AppraisalReview.ReviewStatus.SUBMITTED);
+            review.setSubmittedAt(LocalDateTime.now());
+        }
+
         reviewRepository.save(review);
 
         // Update appraisal status
@@ -375,6 +388,186 @@ public class AppraisalService {
         appraisalRepository.save(appraisal);
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // GOAL-BASED RATING FINALIZATION (60 % goals + 40 % competencies)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /**
+     * Compute the goal achievement score (0–100) for an employee in a cycle.
+     * Each goal contributes: progressPct × weightage / totalWeightage
+     * If no goals exist the score is 0.
+     */
+    public double computeGoalScore(Long employeeId, Long cycleId) {
+        Employee employee = employeeRepository.findById(employeeId)
+                .orElseThrow(() -> new RuntimeException("Employee not found"));
+        AppraisalCycle cycle = cycleRepository.findById(cycleId)
+                .orElseThrow(() -> new RuntimeException("Cycle not found"));
+
+        List<Goal> goals = goalRepository
+                .findByAssignedToAndCycleOrderByDueDateAsc(employee, cycle);
+
+        if (goals.isEmpty())
+            return 0.0;
+
+        int totalWeight = goals.stream().mapToInt(Goal::getWeightage).sum();
+        double weighted = goals.stream()
+                .mapToDouble(g -> (double) g.getProgressPct() * g.getWeightage())
+                .sum();
+
+        return totalWeight > 0 ? weighted / totalWeight : 0.0;
+    }
+
+    /**
+     * Map a 0-100 final score to a PerformanceRating band:
+     * ≥ 90 → OUTSTANDING
+     * 75-89 → EXCEEDS
+     * 60-74 → MEETS
+     * 40-59 → NEEDS_IMPROVEMENT
+     * < 40 → UNSATISFACTORY
+     */
+    public Appraisal.PerformanceRating scoreToRating(double score) {
+        if (score >= 90)
+            return Appraisal.PerformanceRating.OUTSTANDING;
+        if (score >= 75)
+            return Appraisal.PerformanceRating.EXCEEDS;
+        if (score >= 60)
+            return Appraisal.PerformanceRating.MEETS;
+        if (score >= 40)
+            return Appraisal.PerformanceRating.NEEDS_IMPROVEMENT;
+        return Appraisal.PerformanceRating.UNSATISFACTORY;
+    }
+
+    /**
+     * Finalize the performance rating for an appraisal using a 60/40 blend:
+     * finalScore = goalScore × 0.60 + normalizedCompetencyScore × 0.40
+     *
+     * The competency overallRating is on a 1-5 scale; we normalise it to 0-100
+     * before blending. If no competency reviews exist, the full weight falls
+     * on goal achievement.
+     *
+     * Optionally, if {@code overrideRating} is not null it is applied directly
+     * without recalculating (used when a manager manually overrides the band).
+     *
+     * @return a map with: goalScore, competencyScore, finalScore, performanceRating
+     */
+    @Transactional
+    public Map<String, Object> finalizeRating(Long appraisalId, String overrideRating) {
+        Appraisal appraisal = appraisalRepository.findById(appraisalId)
+                .orElseThrow(() -> new RuntimeException("Appraisal not found"));
+
+        double goalScore = computeGoalScore(
+                appraisal.getEmployee().getId(),
+                appraisal.getCycle().getId());
+
+        // Normalize competency overallRating (1-5 scale) → 0-100
+        Double rawReview = appraisal.getOverallRating();
+        double competencyScore = rawReview != null ? (rawReview / 5.0) * 100.0 : 0.0;
+
+        // Decide effective weights: if no competency score yet, give 100 % to goals
+        double effectiveGoalWeight = rawReview != null ? GOAL_WEIGHT : 1.0;
+        double effectiveCompetencyWeight = rawReview != null ? COMPETENCY_WEIGHT : 0.0;
+
+        double finalScore = (goalScore * effectiveGoalWeight)
+                + (competencyScore * effectiveCompetencyWeight);
+
+        Appraisal.PerformanceRating band;
+        if (overrideRating != null && !overrideRating.isBlank()) {
+            band = Appraisal.PerformanceRating.valueOf(overrideRating.trim().toUpperCase());
+        } else {
+            band = scoreToRating(finalScore);
+        }
+
+        appraisal.setPerformanceRating(band);
+
+        // If the employee had previously disagreed, this re-finalization acts as the
+        // authoritative override.
+        // We set employeeAgreed = true so the employee can no longer disagree again.
+        if (appraisal.getEmployeeAgreed() != null && !appraisal.getEmployeeAgreed()) {
+            appraisal.setEmployeeAgreed(true);
+        }
+
+        appraisalRepository.save(appraisal);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("goalScore", Math.round(goalScore * 10.0) / 10.0);
+        result.put("competencyScore", Math.round(competencyScore * 10.0) / 10.0);
+        result.put("finalScore", Math.round(finalScore * 10.0) / 10.0);
+        result.put("performanceRating", band.name());
+        result.put("appraisalId", appraisalId);
+        return result;
+    }
+
+    /**
+     * Preview the rating breakdown for an appraisal WITHOUT saving.
+     * Returns the same map as finalizeRating but does not persist.
+     */
+    public Map<String, Object> previewRating(Long appraisalId) {
+        Appraisal appraisal = appraisalRepository.findById(appraisalId)
+                .orElseThrow(() -> new RuntimeException("Appraisal not found"));
+
+        double goalScore = computeGoalScore(
+                appraisal.getEmployee().getId(),
+                appraisal.getCycle().getId());
+        Double rawReview = appraisal.getOverallRating();
+        double competencyScore = rawReview != null ? (rawReview / 5.0) * 100.0 : 0.0;
+
+        double effectiveGoalWeight = rawReview != null ? GOAL_WEIGHT : 1.0;
+        double effectiveCompetencyWeight = rawReview != null ? COMPETENCY_WEIGHT : 0.0;
+
+        double finalScore = (goalScore * effectiveGoalWeight)
+                + (competencyScore * effectiveCompetencyWeight);
+
+        // Also attach per-goal breakdown for the UI
+        Employee employee = appraisal.getEmployee();
+        AppraisalCycle cycle = appraisal.getCycle();
+        List<Goal> goals = goalRepository
+                .findByAssignedToAndCycleOrderByDueDateAsc(employee, cycle);
+
+        List<Map<String, Object>> goalBreakdown = goals.stream().map(g -> {
+            Map<String, Object> gm = new LinkedHashMap<>();
+            gm.put("id", g.getId());
+            gm.put("title", g.getTitle());
+            gm.put("weightage", g.getWeightage());
+            gm.put("progressPct", g.getProgressPct());
+            gm.put("status", g.getStatus().name());
+            gm.put("contribution", Math.round(g.getProgressPct() * g.getWeightage() / 100.0 * 10.0) / 10.0);
+            return gm;
+        }).collect(Collectors.toList());
+
+        // Add review comments summary
+        List<AppraisalReview> reviews = reviewRepository.findByAppraisal(appraisal);
+        List<Map<String, Object>> reviewComments = reviews.stream()
+                .filter(r -> r.getStatus() == AppraisalReview.ReviewStatus.SUBMITTED)
+                .map(r -> {
+                    Map<String, Object> rm = new LinkedHashMap<>();
+                    rm.put("id", r.getId());
+                    rm.put("reviewerType", r.getReviewerType().name());
+                    rm.put("reviewerName", r.getIsAnonymous() ? "Anonymous Peer"
+                            : r.getReviewer().getFirstName() + " " + r.getReviewer().getLastName());
+                    rm.put("strengths", r.getStrengths());
+                    rm.put("areasOfImprovement", r.getAreasOfImprovement());
+                    rm.put("overallComments", r.getOverallComments());
+                    rm.put("rating", r.getOverallRating());
+                    return rm;
+                }).collect(Collectors.toList());
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("goalScore", Math.round(goalScore * 10.0) / 10.0);
+        result.put("competencyScore", Math.round(competencyScore * 10.0) / 10.0);
+        result.put("finalScore", Math.round(finalScore * 10.0) / 10.0);
+        result.put("suggestedRating", scoreToRating(finalScore).name());
+        result.put("currentRating", appraisal.getPerformanceRating() != null
+                ? appraisal.getPerformanceRating().name()
+                : null);
+        result.put("goalCount", goals.size());
+        result.put("goalBreakdown", goalBreakdown);
+        result.put("reviewComments", reviewComments);
+        result.put("hasCompetencyData", rawReview != null);
+        result.put("goalWeight", (int) (GOAL_WEIGHT * 100));
+        result.put("competencyWeight", (int) (COMPETENCY_WEIGHT * 100));
+        return result;
+    }
+
     /**
      * Convert Appraisal to DTO
      */
@@ -383,8 +576,8 @@ public class AppraisalService {
 
         return AppraisalDTO.builder()
                 .id(appraisal.getId())
-                .cycleId(appraisal.getCycle().getId())
-                .cycleName(appraisal.getCycle().getCycleName())
+                .cycleId(appraisal.getCycle() != null ? appraisal.getCycle().getId() : null)
+                .cycleName(appraisal.getCycle() != null ? appraisal.getCycle().getCycleName() : "Unknown Cycle")
                 .employeeId(employee.getId())
                 .employeeCode(employee.getEmployeeId())
                 .employeeName(employee.getFirstName() + " " + employee.getLastName())
@@ -419,6 +612,8 @@ public class AppraisalService {
                 .goals(appraisal.getGoals())
                 .performanceRating(
                         appraisal.getPerformanceRating() != null ? appraisal.getPerformanceRating().toString() : null)
+                .employeeAgreed(appraisal.getEmployeeAgreed())
+                .employeeDisagreeComments(appraisal.getEmployeeDisagreeComments())
                 .approvedBy(appraisal.getApprovedBy() != null
                         ? appraisal.getApprovedBy().getFirstName() + " " + appraisal.getApprovedBy().getLastName()
                         : null)

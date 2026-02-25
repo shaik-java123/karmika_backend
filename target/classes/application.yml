@@ -3,7 +3,7 @@ spring:
     name: Karmika HRMS
   
   datasource:
-    url: jdbc:mysql://localhost:3306/karmika_hrms?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Asia/Kolkata
+    url: jdbc:mysql://localhost:3306/karmika_hrms?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Asia/Kolkata&zeroDateTimeBehavior=convertToNull&allowPublicKeyRetrieval=true
     username: root
     password: moin
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -17,6 +17,12 @@ spring:
         format_sql: true
         dialect: org.hibernate.dialect.MySQLDialect
     database-platform: org.hibernate.dialect.MySQLDialect
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    date-format: yyyy-MM-dd
+
   
   servlet:
     multipart:

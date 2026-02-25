@@ -52,6 +52,10 @@ public class AppraisalDTO {
     private String goals;
     private String performanceRating;
 
+    // Agreement Tracking
+    private Boolean employeeAgreed;
+    private String employeeDisagreeComments;
+
     // Approval
     private String approvedBy;
     private String approvedAt;

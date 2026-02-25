@@ -1,6 +1,7 @@
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\repository\GoalRepository.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\dto\SalarySlipDTO.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\repository\LeaveApplicationRepository.java
+E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\entity\GoalTemplate.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\entity\User.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\repository\EmployeeSalaryStructureRepository.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\entity\AppraisalRating.java
@@ -10,6 +11,7 @@ E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\controller\LeaveCont
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\controller\GoalController.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\service\NotificationService.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\repository\CompetencyRepository.java
+E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\entity\GoalMetric.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\controller\PolicyController.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\entity\LeaveBalance.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\dto\ApiResponse.java
@@ -22,6 +24,7 @@ E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\dto\AuthResponse.jav
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\service\PayrollService.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\repository\AppraisalRatingRepository.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\repository\OnboardingDocumentRepository.java
+E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\repository\GoalTemplateRepository.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\controller\ChatbotController.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\config\WebConfig.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\service\AuthService.java
@@ -31,6 +34,7 @@ E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\repository\Appraisal
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\controller\AppraisalController.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\entity\Competency.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\controller\AuthController.java
+E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\controller\GoalTemplateController.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\controller\SalaryComponentController.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\entity\EmployeeSalaryStructure.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\repository\AppraisalReviewRepository.java
@@ -73,6 +77,7 @@ E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\controller\EmployeeC
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\repository\EmployeeRepository.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\repository\HolidayRepository.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\repository\SalaryComponentRepository.java
+E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\service\GoalTemplateService.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\repository\AnnouncementRepository.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\entity\Attendance.java
 E:\Workspace\Karmika\backend\src\main\java\com\karmika\hrms\repository\LeaveTypeRepository.java

@@ -132,7 +132,7 @@ public class EmployeeController {
      * GET /api/employees/list
      */
     @GetMapping("/list")
-    @PreAuthorize("hasAnyRole('ADMIN', 'HR', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HR', 'MANAGER', 'EMPLOYEE')")
     public ResponseEntity<List<Employee>> getAllEmployees() {
         return ResponseEntity.ok(employeeRepository.findAll());
     }

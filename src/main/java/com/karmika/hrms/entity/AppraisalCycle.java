@@ -91,6 +91,7 @@ public class AppraisalCycle {
         SEMI_ANNUAL, // Half-yearly
         QUARTERLY, // Every 3 months
         PROBATION, // Probation review
+        PIP, // Performance Improvement Plan
         PROJECT_END // End of project
     }
 }

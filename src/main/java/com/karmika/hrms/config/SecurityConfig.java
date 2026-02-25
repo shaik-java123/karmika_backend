@@ -67,8 +67,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/hr/**").hasAnyRole("ADMIN", "HR")
                         .requestMatchers("/api/employees/create").hasAnyRole("ADMIN", "HR")
                         .requestMatchers("/api/employees/update/**").hasAnyRole("ADMIN", "HR")
-                        .requestMatchers("/api/employees/list").hasAnyRole("ADMIN", "HR", "MANAGER")
-                        .requestMatchers("/api/employees/view/**").hasAnyRole("ADMIN", "HR", "MANAGER")
+                        .requestMatchers("/api/employees/list").hasAnyRole("ADMIN", "HR", "MANAGER", "EMPLOYEE")
+                        .requestMatchers("/api/employees/view/**").hasAnyRole("ADMIN", "HR", "MANAGER", "EMPLOYEE")
                         .requestMatchers("/api/leave/all").hasAnyRole("ADMIN", "HR")
                         .requestMatchers("/api/leave/balance/**").hasAnyRole("ADMIN", "HR")
 

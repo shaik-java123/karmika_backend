@@ -25,6 +25,7 @@ public class AppraisalController {
     private final AppraisalRatingRepository ratingRepository;
     private final CompetencyRepository competencyRepository;
     private final EmployeeRepository employeeRepository;
+    private final GoalRepository goalRepository;
 
     // ==================== CYCLE MANAGEMENT ====================
 
@@ -275,10 +276,40 @@ public class AppraisalController {
     public ResponseEntity<?> getMyPendingReviews(Authentication auth) {
         try {
             Employee reviewer = getEmployeeFromAuth(auth);
-            List<AppraisalReview> reviews = reviewRepository.findByReviewerAndStatus(
-                    reviewer, AppraisalReview.ReviewStatus.PENDING);
+            List<AppraisalReview> reviews = reviewRepository.findByReviewerAndStatusIn(
+                    reviewer,
+                    Arrays.asList(AppraisalReview.ReviewStatus.PENDING, AppraisalReview.ReviewStatus.IN_PROGRESS));
 
             List<Map<String, Object>> reviewData = reviews.stream()
+                    .filter(r -> {
+                        // For SELF reviews, they are always visible.
+                        if (r.getReviewerType() == AppraisalReview.ReviewerType.SELF) {
+                            return true;
+                        }
+
+                        Appraisal app = r.getAppraisal();
+
+                        // Condition 1: Has the employee submitted their own self-review?
+                        boolean selfCompleted = Optional.ofNullable(app.getSelfReviewCompleted()).orElse(false);
+
+                        // Condition 2: Check goal status (at least one goal NOT in NOT_STARTED)
+                        // This indicates they have started/submitted progress on goals.
+                        boolean goalsStarted = false;
+                        Employee reviewee = app.getEmployee();
+                        AppraisalCycle cycle = app.getCycle();
+                        List<Goal> goals = goalRepository.findByAssignedToAndCycleOrderByDueDateAsc(reviewee, cycle);
+
+                        if (goals != null && !goals.isEmpty()) {
+                            goalsStarted = goals.stream().anyMatch(g -> g.getStatus() != Goal.GoalStatus.NOT_STARTED);
+                        } else {
+                            // If they have no goals, we just rely on self-review completeness
+                            goalsStarted = false;
+                        }
+
+                        // If they have completed self review OR started executing goals, the
+                        // manager/peer can see it
+                        return selfCompleted || goalsStarted;
+                    })
                     .map(r -> {
                         Map<String, Object> data = new HashMap<>();
                         data.put("reviewId", r.getId());
@@ -324,11 +355,60 @@ public class AppraisalController {
             // Get existing ratings if any
             List<AppraisalRating> existingRatings = ratingRepository.findByReview(review);
 
+            // Fetch goals of the employee for this cycle to help manager review
+            Employee reviewee = review.getAppraisal().getEmployee();
+            AppraisalCycle cycle = review.getAppraisal().getCycle();
+            List<Goal> goals = goalRepository.findByAssignedToAndCycleOrderByDueDateAsc(reviewee, cycle);
+            List<Map<String, Object>> goalDTOs = goals.stream().map(g -> {
+                Map<String, Object> map = new HashMap<>();
+                map.put("id", g.getId());
+                map.put("title", g.getTitle());
+                map.put("weightage", g.getWeightage());
+                map.put("progressPct", g.getProgressPct());
+                map.put("status", g.getStatus().name());
+                map.put("managerComments", g.getManagerComments());
+                map.put("actuals", g.getAchievedValue());
+                map.put("kpiTarget", g.getTargetMetric());
+                return map;
+            }).collect(Collectors.toList());
+
             Map<String, Object> data = new HashMap<>();
             data.put("review", convertReviewToDTO(review));
             data.put("competencies", competencies);
             data.put("existingRatings", existingRatings);
-            data.put("employee", review.getAppraisal().getEmployee());
+            data.put("employee", reviewee);
+            data.put("goals", goalDTOs);
+
+            // Fetch other submitted reviews for the same appraisal (e.g., self review, peer
+            // review)
+            List<AppraisalReview> allReviews = reviewRepository.findByAppraisal(review.getAppraisal());
+            List<Map<String, Object>> otherReviews = allReviews.stream()
+                    .filter(r -> !r.getId().equals(review.getId()))
+                    .filter(r -> r.getStatus() == AppraisalReview.ReviewStatus.SUBMITTED)
+                    .map(r -> {
+                        Map<String, Object> map = new HashMap<>();
+                        map.put("reviewerType", r.getReviewerType().name());
+                        map.put("reviewerName", r.getIsAnonymous() ? "Anonymous"
+                                : r.getReviewer().getFirstName() + " " + r.getReviewer().getLastName());
+                        map.put("overallComments", r.getOverallComments());
+                        map.put("strengths", r.getStrengths());
+                        map.put("areasOfImprovement", r.getAreasOfImprovement());
+                        map.put("overallRating", r.getOverallRating());
+
+                        List<AppraisalRating> rRatings = ratingRepository.findByReview(r);
+                        Map<Long, Integer> cRatings = new HashMap<>();
+                        Map<Long, String> cComments = new HashMap<>();
+                        for (AppraisalRating ar : rRatings) {
+                            cRatings.put(ar.getCompetency().getId(), ar.getRating());
+                            cComments.put(ar.getCompetency().getId(), ar.getComments());
+                        }
+                        map.put("competencyRatings", cRatings);
+                        map.put("competencyComments", cComments);
+
+                        return map;
+                    }).collect(Collectors.toList());
+
+            data.put("otherReviews", otherReviews);
 
             return ResponseEntity.ok(Map.of(
                     "success", true,
@@ -386,8 +466,13 @@ public class AppraisalController {
                 }
             }
 
+            boolean isDraft = false;
+            if (request.containsKey("isDraft") && request.get("isDraft") != null) {
+                isDraft = Boolean.parseBoolean(request.get("isDraft").toString());
+            }
+
             appraisalService.submitReview(reviewId, overallComments, strengths,
-                    areasOfImprovement, ratings, comments);
+                    areasOfImprovement, ratings, comments, isDraft);
 
             return ResponseEntity.ok(Map.of(
                     "success", true,
@@ -423,6 +508,116 @@ public class AppraisalController {
             return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
                     "error", e.getMessage()));
+        }
+    }
+
+    // ==================== RATING / BAND ====================
+
+    /**
+     * Preview the goal-based rating breakdown for an appraisal (read-only).
+     * GET /api/appraisals/{id}/rating-preview
+     *
+     * Returns:
+     * - goalScore : weighted goal achievement score (0–90+)
+     * - competencyScore : normalised competency review score (0–100)
+     * - finalScore : 60 % goal + 40 % competency blended score
+     * - suggestedRating : auto-calculated band
+     * - currentRating : persisted band (if already finalised)
+     * - goalBreakdown[] : per-goal contribution details
+     * - goalWeight / competencyWeight : split percentages (60 / 40)
+     */
+    @GetMapping("/{id}/rating-preview")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HR', 'MANAGER')")
+    public ResponseEntity<?> ratingPreview(@PathVariable Long id, Authentication auth) {
+        try {
+            Appraisal appraisal = appraisalRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("Appraisal not found"));
+
+            Employee currentUser = getEmployeeFromAuth(auth);
+            if (!canAccessAppraisal(appraisal, currentUser, auth)) {
+                return ResponseEntity.status(403).body(Map.of("success", false, "error", "Access denied"));
+            }
+
+            Map<String, Object> preview = appraisalService.previewRating(id);
+            return ResponseEntity.ok(Map.of("success", true, "preview", preview));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Finalize (save) the performance band for an appraisal.
+     * PUT /api/appraisals/{id}/finalize-rating
+     *
+     * Request body (all optional):
+     * { "overrideRating": "EXCEEDS" } ← if absent the auto-calculated band is used
+     *
+     * Returns the same fields as rating-preview plus the persisted
+     * performanceRating.
+     */
+    @PutMapping("/{id}/finalize-rating")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HR', 'MANAGER')")
+    public ResponseEntity<?> finalizeRating(
+            @PathVariable Long id,
+            @RequestBody(required = false) Map<String, String> request,
+            Authentication auth) {
+        try {
+            Appraisal appraisal = appraisalRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("Appraisal not found"));
+
+            Employee currentUser = getEmployeeFromAuth(auth);
+            if (!canAccessAppraisal(appraisal, currentUser, auth)) {
+                return ResponseEntity.status(403).body(Map.of("success", false, "error", "Access denied"));
+            }
+
+            String overrideRating = request != null ? request.get("overrideRating") : null;
+            Map<String, Object> result = appraisalService.finalizeRating(id, overrideRating);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Performance rating finalized",
+                    "result", result));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Employee acknowledges (agrees/disagrees) with the finalized rating
+     * POST /api/appraisals/{id}/acknowledge
+     */
+    @PostMapping("/{id}/acknowledge")
+    public ResponseEntity<?> acknowledgeAppraisal(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> request,
+            Authentication auth) {
+        try {
+            Appraisal appraisal = appraisalRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("Appraisal not found"));
+
+            Employee currentUser = getEmployeeFromAuth(auth);
+            if (!appraisal.getEmployee().getId().equals(currentUser.getId())) {
+                return ResponseEntity.status(403)
+                        .body(Map.of("success", false, "error", "Only the employee can acknowledge their appraisal"));
+            }
+
+            Boolean agreed = (Boolean) request.get("agreed");
+            String comments = (String) request.get("comments");
+
+            appraisal.setEmployeeAgreed(agreed);
+            if (agreed != null && !agreed) {
+                appraisal.setEmployeeDisagreeComments(comments);
+            }
+            appraisalRepository.save(appraisal);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message",
+                    agreed != null && agreed ? "Appraisal rating accepted."
+                            : "Appraisal disagreement submitted for review.",
+                    "appraisal", appraisalService.convertToDTO(appraisal)));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "error", e.getMessage()));
         }
     }
 

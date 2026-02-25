@@ -285,8 +285,8 @@ public class GoalController {
         if (body.containsKey("priority") && body.get("priority") != null) {
             goal.setPriority(Goal.GoalPriority.valueOf(body.get("priority").toString()));
         }
-        if (body.containsKey("category") && body.get("category") != null) {
-            goal.setCategory(Goal.GoalCategory.valueOf(body.get("category").toString()));
+        if (body.containsKey("pillar") && body.get("pillar") != null) {
+            goal.setPillar(GoalMetric.MetricPillar.valueOf(body.get("pillar").toString()));
         }
 
         String dueDateStr = (String) body.get("dueDate");
@@ -342,7 +342,7 @@ public class GoalController {
         m.put("targetValue", g.getTargetValue());
         m.put("achievedValue", g.getAchievedValue());
         m.put("progressPct", g.getProgressPct());
-        m.put("category", g.getCategory() != null ? g.getCategory().name() : null);
+        m.put("pillar", g.getPillar() != null ? g.getPillar().name() : null);
         m.put("priority", g.getPriority() != null ? g.getPriority().name() : null);
         m.put("status", g.getStatus() != null ? g.getStatus().name() : null);
         m.put("weightage", g.getWeightage());

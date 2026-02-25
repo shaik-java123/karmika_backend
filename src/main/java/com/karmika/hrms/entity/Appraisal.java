@@ -92,6 +92,13 @@ public class Appraisal {
     @Enumerated(EnumType.STRING)
     private PerformanceRating performanceRating;
 
+    // Agreement Tracking
+    @Column(nullable = true)
+    private Boolean employeeAgreed;
+
+    @Column(length = 2000)
+    private String employeeDisagreeComments;
+
     // Approval
     @ManyToOne
     @JoinColumn(name = "approved_by")
