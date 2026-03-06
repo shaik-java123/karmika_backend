@@ -399,7 +399,6 @@ public class AppraisalController {
 
             // Fetch goals of the employee for this cycle to help manager review
             Employee reviewee = review.getAppraisal().getEmployee();
-            AppraisalCycle cycle = review.getAppraisal().getCycle();
             List<Goal> goals = goalRepository.findByAssignedToAndCycleOrderByDueDateAsc(reviewee, cycle);
             List<Map<String, Object>> goalDTOs = goals.stream().map(g -> {
                 Map<String, Object> map = new HashMap<>();
