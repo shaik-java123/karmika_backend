@@ -1,8 +1,6 @@
 package com.karmika.hrms.service;
 
-import com.karmika.hrms.dto.AppraisalCycleDTO;
 import com.karmika.hrms.dto.AppraisalDTO;
-import com.karmika.hrms.dto.AppraisalReviewDTO;
 import com.karmika.hrms.entity.*;
 import com.karmika.hrms.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -25,11 +23,13 @@ public class AppraisalService {
     private final EmployeeRepository employeeRepository;
     private final GoalRepository goalRepository;
 
-    // ── Rating weights ──────────────────────────────────────────────────────
-    /** Fraction of final score contributed by goal achievement (0–100 %). */
-    private static final double GOAL_WEIGHT = 0.60;
-    /** Fraction of final score contributed by competency review (0–100 %). */
-    private static final double COMPETENCY_WEIGHT = 0.40;
+    // ── Rating weights (must sum to 1.0) ─────────────────────────────────────
+    /** KPI / Goal Achievement weight */
+    private static final double GOAL_WEIGHT = 0.50; // 50 %
+    /** Behavior & Competencies weight (manager + self review) */
+    private static final double COMPETENCY_WEIGHT = 0.30; // 30 %
+    /** Feedback & Collaboration weight (peer reviews) */
+    private static final double FEEDBACK_WEIGHT = 0.20; // 20 %
 
     /**
      * Create a new appraisal cycle
@@ -53,10 +53,14 @@ public class AppraisalService {
             throw new RuntimeException("Only draft cycles can be activated");
         }
 
+        // Check if competencies are assigned to this cycle. If none, perhaps use active
+        // ones or throw error.
+        // For flexibility, if none assigned, we'll assume all active ones apply.
+
         // Get all active employees
         List<Employee> activeEmployees = employeeRepository.findAll().stream()
                 .filter(e -> e.getStatus() == Employee.EmployeeStatus.ACTIVE)
-                .collect(Collectors.toList());
+                .toList();
 
         // Create appraisals for each employee
         for (Employee employee : activeEmployees) {
@@ -65,6 +69,56 @@ public class AppraisalService {
 
         cycle.setStatus(AppraisalCycle.CycleStatus.ACTIVE);
         cycleRepository.save(cycle);
+    }
+
+    /**
+     * Delete an appraisal cycle
+     */
+    @Transactional
+    public void deleteCycle(Long id) {
+        AppraisalCycle cycle = cycleRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Cycle not found"));
+
+        if (cycle.getStatus() != AppraisalCycle.CycleStatus.DRAFT &&
+                cycle.getStatus() != AppraisalCycle.CycleStatus.CANCELLED) {
+            throw new RuntimeException("Only draft or cancelled cycles can be deleted");
+        }
+
+        // Check if any appraisals exist
+        if (appraisalRepository.existsByCycle(cycle)) {
+            // If appraisals exist, we might need to delete them too or prevent deletion
+            // For now, let's delete them if it's a draft/cancelled state
+            List<Appraisal> appraisals = appraisalRepository.findByCycle(cycle);
+            for (Appraisal a : appraisals) {
+                // Cascading delete would be better, but doing it manually for safety
+                // reviewRepository.deleteByAppraisal(a);
+                // ratingRepository.deleteByAppraisal(a); // etc.
+                // For simplicity, let's assume standard cascade or just prevent if appraisals
+                // exist
+                throw new RuntimeException(
+                        "Cannot delete cycle because appraisals have already been generated. Cancel the cycle instead.");
+            }
+        }
+
+        cycleRepository.delete(cycle);
+    }
+
+    /**
+     * Delete a competency
+     */
+    @Transactional
+    public void deleteCompetency(Long id) {
+        Competency competency = competencyRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Competency not found"));
+
+        // Check for associations if necessary (e.g. in cycle_competencies or ratings)
+        // If it has ratings, we should probably just deactivate it
+        if (ratingRepository.existsByCompetency(competency)) {
+            competency.setIsActive(false);
+            competencyRepository.save(competency);
+        } else {
+            competencyRepository.delete(competency);
+        }
     }
 
     /**
@@ -455,20 +509,21 @@ public class AppraisalService {
         Appraisal appraisal = appraisalRepository.findById(appraisalId)
                 .orElseThrow(() -> new RuntimeException("Appraisal not found"));
 
+        // ── Component 1: KPI Achievement (0-100) ────────────────────────────
         double goalScore = computeGoalScore(
                 appraisal.getEmployee().getId(),
                 appraisal.getCycle().getId());
 
-        // Normalize competency overallRating (1-5 scale) → 0-100
-        Double rawReview = appraisal.getOverallRating();
-        double competencyScore = rawReview != null ? (rawReview / 5.0) * 100.0 : 0.0;
+        // ── Component 2: Behavior & Competencies (manager + self average, 1-5 → 0-100)
+        // ──
+        double competencyScore = computeCompetencyScore(appraisal);
+        boolean hasCompetency = competencyScore > 0;
 
-        // Decide effective weights: if no competency score yet, give 100 % to goals
-        double effectiveGoalWeight = rawReview != null ? GOAL_WEIGHT : 1.0;
-        double effectiveCompetencyWeight = rawReview != null ? COMPETENCY_WEIGHT : 0.0;
+        // ── Component 3: Feedback & Collaboration (peer avg, 1-5 → 0-100) ──
+        double feedbackScore = computeFeedbackScore(appraisal);
+        boolean hasFeedback = feedbackScore > 0;
 
-        double finalScore = (goalScore * effectiveGoalWeight)
-                + (competencyScore * effectiveCompetencyWeight);
+        double finalScore = computeFinalScore(goalScore, competencyScore, hasCompetency, feedbackScore, hasFeedback);
 
         Appraisal.PerformanceRating band;
         if (overrideRating != null && !overrideRating.isBlank()) {
@@ -481,7 +536,6 @@ public class AppraisalService {
 
         // If the employee had previously disagreed, this re-finalization acts as the
         // authoritative override.
-        // We set employeeAgreed = true so the employee can no longer disagree again.
         if (appraisal.getEmployeeAgreed() != null && !appraisal.getEmployeeAgreed()) {
             appraisal.setEmployeeAgreed(true);
         }
@@ -491,9 +545,16 @@ public class AppraisalService {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("goalScore", Math.round(goalScore * 10.0) / 10.0);
         result.put("competencyScore", Math.round(competencyScore * 10.0) / 10.0);
+        result.put("feedbackScore", Math.round(feedbackScore * 10.0) / 10.0);
         result.put("finalScore", Math.round(finalScore * 10.0) / 10.0);
         result.put("performanceRating", band.name());
         result.put("appraisalId", appraisalId);
+        result.put("hasCompetencyData", hasCompetency);
+        result.put("hasFeedbackData", hasFeedback);
+        // Weights for UI display
+        result.put("goalWeight", (int) (GOAL_WEIGHT * 100));
+        result.put("competencyWeight", (int) (COMPETENCY_WEIGHT * 100));
+        result.put("feedbackWeight", (int) (FEEDBACK_WEIGHT * 100));
         return result;
     }
 
@@ -505,19 +566,22 @@ public class AppraisalService {
         Appraisal appraisal = appraisalRepository.findById(appraisalId)
                 .orElseThrow(() -> new RuntimeException("Appraisal not found"));
 
+        // ── Component 1: KPI Achievement (0-100) ────────────────────────────
         double goalScore = computeGoalScore(
                 appraisal.getEmployee().getId(),
                 appraisal.getCycle().getId());
-        Double rawReview = appraisal.getOverallRating();
-        double competencyScore = rawReview != null ? (rawReview / 5.0) * 100.0 : 0.0;
 
-        double effectiveGoalWeight = rawReview != null ? GOAL_WEIGHT : 1.0;
-        double effectiveCompetencyWeight = rawReview != null ? COMPETENCY_WEIGHT : 0.0;
+        // ── Component 2: Behavior & Competencies ────────────────────────────
+        double competencyScore = computeCompetencyScore(appraisal);
+        boolean hasCompetency = competencyScore > 0;
 
-        double finalScore = (goalScore * effectiveGoalWeight)
-                + (competencyScore * effectiveCompetencyWeight);
+        // ── Component 3: Feedback & Collaboration ───────────────────────────
+        double feedbackScore = computeFeedbackScore(appraisal);
+        boolean hasFeedback = feedbackScore > 0;
 
-        // Also attach per-goal breakdown for the UI
+        double finalScore = computeFinalScore(goalScore, competencyScore, hasCompetency, feedbackScore, hasFeedback);
+
+        // Per-goal breakdown for the UI
         Employee employee = appraisal.getEmployee();
         AppraisalCycle cycle = appraisal.getCycle();
         List<Goal> goals = goalRepository
@@ -534,7 +598,7 @@ public class AppraisalService {
             return gm;
         }).collect(Collectors.toList());
 
-        // Add review comments summary
+        // Review comments summary
         List<AppraisalReview> reviews = reviewRepository.findByAppraisal(appraisal);
         List<Map<String, Object>> reviewComments = reviews.stream()
                 .filter(r -> r.getStatus() == AppraisalReview.ReviewStatus.SUBMITTED)
@@ -548,12 +612,14 @@ public class AppraisalService {
                     rm.put("areasOfImprovement", r.getAreasOfImprovement());
                     rm.put("overallComments", r.getOverallComments());
                     rm.put("rating", r.getOverallRating());
+                    rm.put("reviewerCategory", toCategory(r.getReviewerType()));
                     return rm;
                 }).collect(Collectors.toList());
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("goalScore", Math.round(goalScore * 10.0) / 10.0);
         result.put("competencyScore", Math.round(competencyScore * 10.0) / 10.0);
+        result.put("feedbackScore", Math.round(feedbackScore * 10.0) / 10.0);
         result.put("finalScore", Math.round(finalScore * 10.0) / 10.0);
         result.put("suggestedRating", scoreToRating(finalScore).name());
         result.put("currentRating", appraisal.getPerformanceRating() != null
@@ -562,10 +628,78 @@ public class AppraisalService {
         result.put("goalCount", goals.size());
         result.put("goalBreakdown", goalBreakdown);
         result.put("reviewComments", reviewComments);
-        result.put("hasCompetencyData", rawReview != null);
+        result.put("hasCompetencyData", hasCompetency);
+        result.put("hasFeedbackData", hasFeedback);
+        // Weights for UI display
         result.put("goalWeight", (int) (GOAL_WEIGHT * 100));
         result.put("competencyWeight", (int) (COMPETENCY_WEIGHT * 100));
+        result.put("feedbackWeight", (int) (FEEDBACK_WEIGHT * 100));
         return result;
+    }
+
+    // ── Private helpers for the three-component formula ─────────────────────
+
+    /**
+     * Component 2: average of manager + self competency review ratings, 1-5 →
+     * 0-100.
+     * Uses the separate managerRating and selfRating stored on the Appraisal
+     * entity.
+     */
+    private double computeCompetencyScore(Appraisal appraisal) {
+        double sum = 0;
+        int count = 0;
+        if (appraisal.getManagerRating() != null && appraisal.getManagerRating() > 0) {
+            sum += appraisal.getManagerRating();
+            count++;
+        }
+        if (appraisal.getSelfRating() != null && appraisal.getSelfRating() > 0) {
+            sum += appraisal.getSelfRating();
+            count++;
+        }
+        if (count == 0)
+            return 0.0;
+        double avg = sum / count; // 1-5 scale
+        return (avg / 5.0) * 100.0; // → 0-100
+    }
+
+    /**
+     * Component 3: peer-review average rating, 1-5 → 0-100.
+     */
+    private double computeFeedbackScore(Appraisal appraisal) {
+        Double peerAvg = appraisal.getPeerAverageRating();
+        if (peerAvg == null || peerAvg == 0)
+            return 0.0;
+        return (peerAvg / 5.0) * 100.0;
+    }
+
+    /**
+     * Blend the three components with weight re-distribution:
+     * If a component has no data its weight flows proportionally to the others.
+     */
+    private double computeFinalScore(double goalScore,
+            double competencyScore, boolean hasCompetency,
+            double feedbackScore, boolean hasFeedback) {
+        double wGoal = GOAL_WEIGHT;
+        double wCompetency = hasCompetency ? COMPETENCY_WEIGHT : 0.0;
+        double wFeedback = hasFeedback ? FEEDBACK_WEIGHT : 0.0;
+
+        double totalWeight = wGoal + wCompetency + wFeedback;
+        if (totalWeight == 0)
+            return 0.0;
+
+        // Normalize so weights sum to 1.0
+        double score = (goalScore * wGoal + competencyScore * wCompetency + feedbackScore * wFeedback)
+                / totalWeight;
+        return Math.min(score, 100.0);
+    }
+
+    /** Maps a reviewer type to a UI display category label. */
+    private String toCategory(AppraisalReview.ReviewerType type) {
+        return switch (type) {
+            case MANAGER, SELF -> "Behavior & Competencies";
+            case PEER -> "Feedback & Collaboration";
+            default -> "Other";
+        };
     }
 
     /**
@@ -573,6 +707,13 @@ public class AppraisalService {
      */
     public AppraisalDTO convertToDTO(Appraisal appraisal) {
         Employee employee = appraisal.getEmployee();
+
+        // Collect existing peer reviewer IDs so the UI can pre-select them
+        List<Long> peerReviewerIds = reviewRepository
+                .findByAppraisalAndReviewerType(appraisal, AppraisalReview.ReviewerType.PEER)
+                .stream()
+                .map(r -> r.getReviewer().getId())
+                .collect(Collectors.toList());
 
         return AppraisalDTO.builder()
                 .id(appraisal.getId())
@@ -619,6 +760,7 @@ public class AppraisalService {
                         : null)
                 .approvedAt(appraisal.getApprovedAt() != null ? appraisal.getApprovedAt().toString() : null)
                 .approvalRemarks(appraisal.getApprovalRemarks())
+                .peerReviewerIds(peerReviewerIds)
                 .build();
     }
 }

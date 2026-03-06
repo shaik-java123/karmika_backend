@@ -53,14 +53,15 @@ public class User {
         @Column(name = "reset_token")
         private String resetToken;
 
-        @Column(name = "reset_token_expiry")
+        @Column(name = "reset_token_expiry", columnDefinition = "DATETIME")
         private LocalDateTime resetTokenExpiry;
 
         @CreatedDate
-        @Column(nullable = false, updatable = false)
+        @Column(nullable = false, updatable = false, columnDefinition = "DATETIME")
         private LocalDateTime createdAt;
 
         @LastModifiedDate
+        @Column(columnDefinition = "DATETIME")
         private LocalDateTime updatedAt;
 
         // Method to get authorities for Spring Security

@@ -46,6 +46,12 @@ public class SecurityConfig {
                         .requestMatchers("/uploads/**").permitAll() // Serve uploaded files (onboarding docs, photos)
                                                                     // publicly
 
+                        // Actuator health & circuit breaker monitoring
+                        .requestMatchers("/actuator/health/**").permitAll()
+                        .requestMatchers("/actuator/info").permitAll()
+                        .requestMatchers("/actuator/circuitbreakers/**").permitAll()
+                        .requestMatchers("/actuator/circuitbreakerevents/**").permitAll()
+
                         // Swagger UI / OpenAPI
                         .requestMatchers(
                                 "/swagger-ui.html",
@@ -103,6 +109,18 @@ public class SecurityConfig {
                         .requestMatchers("/api/appraisals/cycles").hasAnyRole("ADMIN", "HR", "MANAGER")
                         .requestMatchers("/api/appraisals/cycles/**").hasAnyRole("ADMIN", "HR")
                         .requestMatchers("/api/appraisals/*/approve").hasAnyRole("ADMIN", "HR")
+
+                        // PAYROLL endpoints
+                        .requestMatchers("/api/payroll/my-slips").authenticated()
+                        .requestMatchers("/api/payroll/slip/{id}").authenticated()
+                        .requestMatchers("/api/payroll/**").hasAnyRole("ADMIN", "HR", "FINANCE")
+
+                        // LMS endpoints
+                        .requestMatchers("/api/lms/certificate/**").permitAll()
+                        .requestMatchers("/api/lms/courses/*/publish").hasAnyRole("ADMIN", "HR")
+                        .requestMatchers("/api/lms/courses/*/archive").hasAnyRole("ADMIN", "HR")
+                        .requestMatchers("/api/lms/courses/*/delete").hasAnyRole("ADMIN", "HR")
+                        .requestMatchers("/api/lms/**").authenticated()
 
                         // Default - require authentication
                         .requestMatchers("/api/chatbot/**").authenticated()

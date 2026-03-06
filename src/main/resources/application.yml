@@ -3,20 +3,21 @@ spring:
     name: Karmika HRMS
   
   datasource:
-    url: jdbc:mysql://localhost:3306/karmika_hrms?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Asia/Kolkata&zeroDateTimeBehavior=convertToNull&allowPublicKeyRetrieval=true
-    username: root
-    password: moin
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/karmika_hrms?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Asia/Kolkata&zeroDateTimeBehavior=convertToNull&allowPublicKeyRetrieval=true}
+    username: ${SPRING_DATASOURCE_USERNAME:root}
+    password: ${SPRING_DATASOURCE_PASSWORD:moin}
     driver-class-name: com.mysql.cj.jdbc.Driver
   
   jpa:
     hibernate:
-      ddl-auto: update
-    show-sql: true
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
+    show-sql: ${SPRING_JPA_SHOW_SQL:true}
     properties:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.MySQLDialect
     database-platform: org.hibernate.dialect.MySQLDialect
+
 
   jackson:
     serialization:
@@ -26,8 +27,8 @@ spring:
   
   servlet:
     multipart:
-      max-file-size: 10MB
-      max-request-size: 10MB
+      max-file-size: 200MB
+      max-request-size: 200MB
 
 server:
   port: 8080
@@ -37,7 +38,7 @@ server:
 
 # JWT Configuration
 jwt:
-  secret: karmika-hrms-secret-key-2026-change-this-in-production-with-strong-key
+  secret: ${JWT_SECRET:karmika-hrms-secret-key-2026-change-this-in-production-with-strong-key}
   expiration: 86400000  # 24 hours in milliseconds
 
 # Application Configuration
@@ -45,7 +46,7 @@ app:
   name: Karmika HRMS
   version: 1.0.0
   timezone: Asia/Kolkata
-  upload-dir: uploads
+  upload-dir: ${APP_UPLOAD_DIR:uploads}
 
 # SpringDoc OpenAPI (Swagger UI)
 springdoc:
@@ -72,3 +73,71 @@ ollama:
   #   gemini-1.5-flash  → 15 RPM / 1,500 RPD  ← recommended for free tier
   #   gemini-2.0-flash  → 10 RPM /   200 RPD
   #model: gemini-1.5-flash  
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Resilience4j Circuit Breaker Configuration
+# Prevents cascade failures when external services (Ollama, etc.) go down.
+# ──────────────────────────────────────────────────────────────────────────────
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        # Use a count-based sliding window of the last 10 calls
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        # Minimum calls before the circuit breaker can calculate the failure rate
+        minimumNumberOfCalls: 5
+        # If >= 50% of calls fail, open the circuit
+        failureRateThreshold: 50
+        # Wait 30 seconds in OPEN state before transitioning to HALF_OPEN
+        waitDurationInOpenState: 30s
+        # Allow 3 calls in HALF_OPEN to test if the downstream is back
+        permittedNumberOfCallsInHalfOpenState: 3
+        # Automatically transition from OPEN to HALF_OPEN
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        # Record these exceptions as failures
+        recordExceptions:
+          - java.io.IOException
+          - java.net.ConnectException
+          - java.net.SocketTimeoutException
+          - org.springframework.web.client.ResourceAccessException
+          - org.springframework.web.client.HttpServerErrorException
+          - com.karmika.hrms.exception.ServiceUnavailableException
+        # Ignore these (they indicate client-side issues, not service failure)
+        ignoreExceptions:
+          - com.karmika.hrms.exception.BadRequestException
+          - com.karmika.hrms.exception.ResourceNotFoundException
+          - com.karmika.hrms.exception.UnauthorizedException
+    instances:
+      # Chatbot — calls external Ollama API
+      ollamaService:
+        baseConfig: default
+        slidingWindowSize: 5
+        failureRateThreshold: 50
+        waitDurationInOpenState: 30s
+      # General external service breaker (for future integrations)
+      externalService:
+        baseConfig: default
+        slidingWindowSize: 10
+        failureRateThreshold: 60
+        waitDurationInOpenState: 60s
+      # RandomUser API integration for Demo
+      randomUserService:
+        baseConfig: default
+        slidingWindowSize: 4
+        failureRateThreshold: 50
+        waitDurationInOpenState: 20s
+
+# Expose circuit breaker health in Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,circuitbreakers,circuitbreakerevents
+  endpoint:
+    health:
+      show-details: always
+  health:
+    circuitbreakers:
+      enabled: true
+

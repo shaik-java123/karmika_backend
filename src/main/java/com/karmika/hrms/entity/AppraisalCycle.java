@@ -71,12 +71,16 @@ public class AppraisalCycle {
     @JoinColumn(name = "created_by")
     private Employee createdBy;
 
+    @ManyToMany
+    @JoinTable(name = "cycle_competencies", joinColumns = @JoinColumn(name = "cycle_id"), inverseJoinColumns = @JoinColumn(name = "competency_id"))
+    private java.util.Set<Competency> competencies = new java.util.HashSet<>();
+
     @CreatedDate
-    @Column(nullable = false, updatable = false, columnDefinition = "TIMESTAMP")
+    @Column(nullable = false, updatable = false, columnDefinition = "DATETIME")
     private LocalDateTime createdAt;
 
     @LastModifiedDate
-    @Column(columnDefinition = "TIMESTAMP")
+    @Column(columnDefinition = "DATETIME")
     private LocalDateTime updatedAt;
 
     public enum CycleStatus {

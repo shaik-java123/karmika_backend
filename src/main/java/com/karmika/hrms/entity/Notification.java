@@ -45,7 +45,7 @@ public class Notification {
     private String relatedEntityType;
 
     @CreatedDate
-    @Column(nullable = false, updatable = false)
+    @Column(nullable = false, updatable = false, columnDefinition = "DATETIME")
     private LocalDateTime createdAt;
 
     public enum NotificationType {

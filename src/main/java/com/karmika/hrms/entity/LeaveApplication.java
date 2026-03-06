@@ -51,16 +51,18 @@ public class LeaveApplication {
     @JoinColumn(name = "approved_by")
     private Employee approvedBy;
 
+    @Column(columnDefinition = "DATETIME")
     private LocalDateTime approvedAt;
 
     @Column(length = 500)
     private String approverComments;
 
     @CreatedDate
-    @Column(nullable = false, updatable = false)
+    @Column(nullable = false, updatable = false, columnDefinition = "DATETIME")
     private LocalDateTime createdAt;
 
     @LastModifiedDate
+    @Column(columnDefinition = "DATETIME")
     private LocalDateTime updatedAt;
 
     public enum LeaveStatus {

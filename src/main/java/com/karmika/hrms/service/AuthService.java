@@ -5,6 +5,10 @@ import com.karmika.hrms.dto.LoginRequest;
 import com.karmika.hrms.dto.RegisterRequest;
 import com.karmika.hrms.entity.Employee;
 import com.karmika.hrms.entity.User;
+import com.karmika.hrms.exception.BadRequestException;
+import com.karmika.hrms.exception.DuplicateResourceException;
+import com.karmika.hrms.exception.ResourceNotFoundException;
+import com.karmika.hrms.exception.UnauthorizedException;
 import com.karmika.hrms.repository.EmployeeRepository;
 import com.karmika.hrms.repository.UserRepository;
 import com.karmika.hrms.security.JwtTokenProvider;
@@ -33,11 +37,11 @@ public class AuthService {
 
     public AuthResponse register(RegisterRequest request) {
         if (userRepository.existsByUsername(request.getUsername())) {
-            throw new RuntimeException("Username already exists");
+            throw new DuplicateResourceException("User", "username", request.getUsername());
         }
 
         if (userRepository.existsByEmail(request.getEmail())) {
-            throw new RuntimeException("Email already exists");
+            throw new DuplicateResourceException("User", "email", request.getEmail());
         }
 
         User user = new User();
@@ -61,7 +65,7 @@ public class AuthService {
 
     public Map<String, Object> createUserForEmployee(String firstName, String lastName, String email, String roleName) {
         if (userRepository.existsByEmail(email)) {
-            throw new RuntimeException("Email already exists");
+            throw new DuplicateResourceException("User", "email", email);
         }
 
         String username = generateUsername(firstName, lastName);
@@ -90,10 +94,10 @@ public class AuthService {
 
     public void changePassword(String username, String currentPassword, String newPassword) {
         User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("User", "username", username));
 
         if (!passwordEncoder.matches(currentPassword, user.getPassword())) {
-            throw new RuntimeException("Invalid current password");
+            throw new UnauthorizedException("Invalid current password");
         }
 
         user.setPassword(passwordEncoder.encode(newPassword));
@@ -109,11 +113,10 @@ public class AuthService {
      */
     public Map<String, Object> forgotPassword(String email) {
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException(
-                        "No account found with email: " + email));
+                .orElseThrow(() -> new ResourceNotFoundException("User", "email", email));
 
         if (!user.getActive()) {
-            throw new RuntimeException("This account is disabled. Contact your administrator.");
+            throw new BadRequestException("This account is disabled. Contact your administrator.");
         }
 
         // Generate a 6-digit numeric OTP
@@ -137,10 +140,10 @@ public class AuthService {
      */
     public void resetPassword(String email, String token, String newPassword) {
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("No account found with this email."));
+                .orElseThrow(() -> new ResourceNotFoundException("User", "email", email));
 
         if (user.getResetToken() == null || !user.getResetToken().equals(token)) {
-            throw new RuntimeException("Invalid reset token. Please request a new one.");
+            throw new BadRequestException("Invalid reset token. Please request a new one.");
         }
 
         if (user.getResetTokenExpiry() == null ||
@@ -149,11 +152,11 @@ public class AuthService {
             user.setResetToken(null);
             user.setResetTokenExpiry(null);
             userRepository.save(user);
-            throw new RuntimeException("This reset token has expired. Please request a new one.");
+            throw new BadRequestException("This reset token has expired. Please request a new one.");
         }
 
         if (newPassword.length() < 6) {
-            throw new RuntimeException("Password must be at least 6 characters.");
+            throw new BadRequestException("Password must be at least 6 characters.");
         }
 
         user.setPassword(passwordEncoder.encode(newPassword));
@@ -185,30 +188,18 @@ public class AuthService {
 
         // Find user by username
         User user = userRepository.findByUsername(request.getUsername())
-                .orElseThrow(() -> {
-                    System.out.println("User not found: " + request.getUsername());
-                    return new RuntimeException("Invalid username or password");
-                });
+                .orElseThrow(() -> new UnauthorizedException("Invalid username or password"));
 
-        System.out.println("User found: " + user.getUsername());
-        System.out.println("User role: " + user.getRole());
-        System.out.println("User active: " + user.getActive());
-        System.out.println("Password from DB (first 20 chars): "
-                + user.getPassword().substring(0, Math.min(20, user.getPassword().length())));
-        System.out.println("Password from request: " + request.getPassword());
-
-        // Manually check password using BCrypt
+        // Validate password
         boolean passwordMatches = passwordEncoder.matches(request.getPassword(), user.getPassword());
-        System.out.println("Password matches: " + passwordMatches);
 
         if (!passwordMatches) {
-            System.out.println("Password mismatch!");
-            throw new RuntimeException("Invalid username or password");
+            throw new UnauthorizedException("Invalid username or password");
         }
 
         // Check if user is active
         if (!user.getActive()) {
-            throw new RuntimeException("Account is disabled");
+            throw new BadRequestException("Account is disabled. Contact your administrator.");
         }
 
         // Create UserDetails object for authentication

@@ -127,10 +127,11 @@ public class Employee {
     private String certifications;
 
     @CreatedDate
-    @Column(nullable = false, updatable = false)
+    @Column(nullable = false, updatable = false, columnDefinition = "DATETIME")
     private LocalDateTime createdAt;
 
     @LastModifiedDate
+    @Column(columnDefinition = "DATETIME")
     private LocalDateTime updatedAt;
 
     public enum Gender {

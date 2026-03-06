@@ -5,6 +5,7 @@ import com.karmika.hrms.dto.AuthResponse;
 import com.karmika.hrms.dto.ChangePasswordRequest;
 import com.karmika.hrms.dto.LoginRequest;
 import com.karmika.hrms.dto.RegisterRequest;
+import com.karmika.hrms.exception.BadRequestException;
 import com.karmika.hrms.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -22,34 +23,22 @@ public class AuthController {
 
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
-        try {
-            AuthResponse response = authService.register(request);
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            throw new RuntimeException(e.getMessage());
-        }
+        AuthResponse response = authService.register(request);
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
-        try {
-            AuthResponse response = authService.login(request);
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            throw new RuntimeException("Invalid username or password");
-        }
+        AuthResponse response = authService.login(request);
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/change-password")
     public ResponseEntity<ApiResponse> changePassword(
             @Valid @RequestBody ChangePasswordRequest request, Authentication authentication) {
-        try {
-            authService.changePassword(authentication.getName(), request.getCurrentPassword(),
-                    request.getNewPassword());
-            return ResponseEntity.ok(new ApiResponse(true, "Password changed successfully"));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(new ApiResponse(false, e.getMessage()));
-        }
+        authService.changePassword(authentication.getName(), request.getCurrentPassword(),
+                request.getNewPassword());
+        return ResponseEntity.ok(new ApiResponse(true, "Password changed successfully"));
     }
 
     /**
@@ -58,17 +47,12 @@ public class AuthController {
      */
     @PostMapping("/forgot-password")
     public ResponseEntity<?> forgotPassword(@RequestBody Map<String, String> request) {
-        try {
-            String email = request.get("email");
-            if (email == null || email.isBlank()) {
-                return ResponseEntity.badRequest()
-                        .body(new ApiResponse(false, "Email is required"));
-            }
-            Map<String, Object> result = authService.forgotPassword(email.trim().toLowerCase());
-            return ResponseEntity.ok(result);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(new ApiResponse(false, e.getMessage()));
+        String email = request.get("email");
+        if (email == null || email.isBlank()) {
+            throw new BadRequestException("Email is required");
         }
+        Map<String, Object> result = authService.forgotPassword(email.trim().toLowerCase());
+        return ResponseEntity.ok(result);
     }
 
     /**
@@ -77,19 +61,14 @@ public class AuthController {
      */
     @PostMapping("/reset-password")
     public ResponseEntity<ApiResponse> resetPassword(@RequestBody Map<String, String> request) {
-        try {
-            String email = request.get("email");
-            String token = request.get("token");
-            String newPassword = request.get("newPassword");
-            if (email == null || token == null || newPassword == null) {
-                return ResponseEntity.badRequest()
-                        .body(new ApiResponse(false, "Email, token and newPassword are required"));
-            }
-            authService.resetPassword(email.trim().toLowerCase(), token.trim(), newPassword);
-            return ResponseEntity.ok(new ApiResponse(true, "Password reset successfully! You can now log in."));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(new ApiResponse(false, e.getMessage()));
+        String email = request.get("email");
+        String token = request.get("token");
+        String newPassword = request.get("newPassword");
+        if (email == null || token == null || newPassword == null) {
+            throw new BadRequestException("Email, token and newPassword are required");
         }
+        authService.resetPassword(email.trim().toLowerCase(), token.trim(), newPassword);
+        return ResponseEntity.ok(new ApiResponse(true, "Password reset successfully! You can now log in."));
     }
 
     @GetMapping("/test")

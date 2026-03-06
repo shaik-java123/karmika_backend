@@ -103,6 +103,24 @@ public class AppraisalController {
         }
     }
 
+    /**
+     * Delete a cycle (ADMIN/HR only)
+     */
+    @DeleteMapping("/cycles/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HR')")
+    public ResponseEntity<?> deleteCycle(@PathVariable Long id) {
+        try {
+            appraisalService.deleteCycle(id);
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Cycle deleted successfully"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage()));
+        }
+    }
+
     // ==================== COMPETENCY MANAGEMENT ====================
 
     /**
@@ -117,6 +135,24 @@ public class AppraisalController {
                     "success", true,
                     "message", "Competency created successfully",
                     "competency", created));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Delete a competency (ADMIN/HR only)
+     */
+    @DeleteMapping("/competencies/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HR')")
+    public ResponseEntity<?> deleteCompetency(@PathVariable Long id) {
+        try {
+            appraisalService.deleteCompetency(id);
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Competency deleted successfully"));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
@@ -153,7 +189,7 @@ public class AppraisalController {
             List<Appraisal> appraisals = appraisalRepository.findByEmployee(employee);
             List<AppraisalDTO> dtos = appraisals.stream()
                     .map(appraisalService::convertToDTO)
-                    .collect(Collectors.toList());
+                    .toList();
 
             return ResponseEntity.ok(Map.of(
                     "success", true,
@@ -182,12 +218,12 @@ public class AppraisalController {
                 Employee manager = getEmployeeFromAuth(auth);
                 appraisals = appraisals.stream()
                         .filter(a -> a.getManager() != null && a.getManager().getId().equals(manager.getId()))
-                        .collect(Collectors.toList());
+                        .toList();
             }
 
             List<AppraisalDTO> dtos = appraisals.stream()
                     .map(appraisalService::convertToDTO)
-                    .collect(Collectors.toList());
+                    .toList();
 
             return ResponseEntity.ok(Map.of(
                     "success", true,
@@ -301,9 +337,6 @@ public class AppraisalController {
 
                         if (goals != null && !goals.isEmpty()) {
                             goalsStarted = goals.stream().anyMatch(g -> g.getStatus() != Goal.GoalStatus.NOT_STARTED);
-                        } else {
-                            // If they have no goals, we just rely on self-review completeness
-                            goalsStarted = false;
                         }
 
                         // If they have completed self review OR started executing goals, the
@@ -320,7 +353,7 @@ public class AppraisalController {
                         data.put("status", r.getStatus().toString());
                         return data;
                     })
-                    .collect(Collectors.toList());
+                    .toList();
 
             return ResponseEntity.ok(Map.of(
                     "success", true,
@@ -336,6 +369,7 @@ public class AppraisalController {
      * Get review details for submission
      */
     @GetMapping("/reviews/{reviewId}")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public ResponseEntity<?> getReviewDetails(@PathVariable Long reviewId, Authentication auth) {
         try {
             AppraisalReview review = reviewRepository.findById(reviewId)
@@ -350,7 +384,15 @@ public class AppraisalController {
             }
 
             // Get competencies
-            List<Competency> competencies = competencyRepository.findByIsActiveTrueOrderByDisplayOrder();
+            AppraisalCycle cycle = review.getAppraisal().getCycle();
+            List<Competency> competencies;
+            if (cycle.getCompetencies() != null && !cycle.getCompetencies().isEmpty()) {
+                competencies = new ArrayList<>(cycle.getCompetencies());
+                // Sort by display order manually or via stream
+                competencies.sort(Comparator.comparingInt(Competency::getDisplayOrder));
+            } else {
+                competencies = competencyRepository.findByIsActiveTrueOrderByDisplayOrder();
+            }
 
             // Get existing ratings if any
             List<AppraisalRating> existingRatings = ratingRepository.findByReview(review);

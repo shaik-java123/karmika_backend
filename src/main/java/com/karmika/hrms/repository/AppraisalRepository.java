@@ -23,4 +23,6 @@ public interface AppraisalRepository extends JpaRepository<Appraisal, Long> {
     List<Appraisal> findByStatus(Appraisal.AppraisalStatus status);
 
     List<Appraisal> findByCycleAndStatus(AppraisalCycle cycle, Appraisal.AppraisalStatus status);
+
+    boolean existsByCycle(AppraisalCycle cycle);
 }

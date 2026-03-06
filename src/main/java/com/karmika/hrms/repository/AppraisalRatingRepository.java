@@ -2,6 +2,7 @@ package com.karmika.hrms.repository;
 
 import com.karmika.hrms.entity.AppraisalRating;
 import com.karmika.hrms.entity.AppraisalReview;
+import com.karmika.hrms.entity.Competency;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -13,4 +14,6 @@ public interface AppraisalRatingRepository extends JpaRepository<AppraisalRating
     List<AppraisalRating> findByReview(AppraisalReview review);
 
     void deleteByReview(AppraisalReview review);
+
+    boolean existsByCompetency(Competency competency);
 }

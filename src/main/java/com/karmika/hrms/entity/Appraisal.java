@@ -38,7 +38,7 @@ public class Appraisal {
     @Column(nullable = false)
     private Boolean selfReviewCompleted = false;
 
-    @Column(columnDefinition = "TIMESTAMP")
+    @Column(columnDefinition = "DATETIME")
     private LocalDateTime selfReviewCompletedAt;
 
     // Manager Review
@@ -49,7 +49,7 @@ public class Appraisal {
     @Column(nullable = false)
     private Boolean managerReviewCompleted = false;
 
-    @Column(columnDefinition = "TIMESTAMP")
+    @Column(columnDefinition = "DATETIME")
     private LocalDateTime managerReviewCompletedAt;
 
     // Peer Reviews
@@ -104,18 +104,18 @@ public class Appraisal {
     @JoinColumn(name = "approved_by")
     private Employee approvedBy;
 
-    @Column(columnDefinition = "TIMESTAMP")
+    @Column(columnDefinition = "DATETIME")
     private LocalDateTime approvedAt;
 
     @Column(length = 500)
     private String approvalRemarks;
 
     @CreatedDate
-    @Column(nullable = false, updatable = false, columnDefinition = "TIMESTAMP")
+    @Column(nullable = false, updatable = false, columnDefinition = "DATETIME")
     private LocalDateTime createdAt;
 
     @LastModifiedDate
-    @Column(columnDefinition = "TIMESTAMP")
+    @Column(columnDefinition = "DATETIME")
     private LocalDateTime updatedAt;
 
     public enum AppraisalStatus {

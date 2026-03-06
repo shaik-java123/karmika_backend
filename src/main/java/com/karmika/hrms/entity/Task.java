@@ -48,16 +48,18 @@ public class Task {
     @Column(nullable = false)
     private LocalDate dueDate;
 
+    @Column(columnDefinition = "DATETIME")
     private LocalDateTime completedAt;
 
     @Column(length = 1000)
     private String comments;
 
     @CreatedDate
-    @Column(nullable = false, updatable = false)
+    @Column(nullable = false, updatable = false, columnDefinition = "DATETIME")
     private LocalDateTime createdAt;
 
     @LastModifiedDate
+    @Column(columnDefinition = "DATETIME")
     private LocalDateTime updatedAt;
 
     public enum TaskStatus {

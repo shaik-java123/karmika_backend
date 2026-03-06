@@ -64,6 +64,9 @@ public class AppraisalDTO {
     // Reviews
     private List<AppraisalReviewDTO> reviews;
 
+    // Peer reviewer IDs (for pre-populating the peer selection modal)
+    private List<Long> peerReviewerIds;
+
     // Competency Ratings Summary
     private Map<String, Double> competencyRatings;
 }
