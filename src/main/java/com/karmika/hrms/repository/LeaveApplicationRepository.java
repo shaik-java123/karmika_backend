@@ -14,4 +14,7 @@ public interface LeaveApplicationRepository extends JpaRepository<LeaveApplicati
     List<LeaveApplication> findByStatus(LeaveApplication.LeaveStatus status);
 
     List<LeaveApplication> findByEmployeeAndStatus(Employee employee, LeaveApplication.LeaveStatus status);
+
+    @org.springframework.data.jpa.repository.Query("SELECT l FROM LeaveApplication l WHERE l.status = 'APPROVED' AND :date BETWEEN l.startDate AND l.endDate")
+    List<LeaveApplication> findApprovedLeavesOnDate(java.time.LocalDate date);
 }

@@ -25,6 +25,8 @@ public class DepartmentController {
          */
         @PostMapping("/create")
         @PreAuthorize("hasRole('ADMIN')")
+        @org.springframework.cache.annotation.CacheEvict(value = { "departments",
+                        "departmentStats" }, allEntries = true)
         public ResponseEntity<?> createDepartment(@RequestBody Map<String, String> data) {
                 try {
                         if (departmentRepository.findAll().stream()
@@ -58,6 +60,8 @@ public class DepartmentController {
          */
         @PutMapping("/update/{id}")
         @PreAuthorize("hasRole('ADMIN')")
+        @org.springframework.cache.annotation.CacheEvict(value = { "departments",
+                        "departmentStats" }, allEntries = true)
         public ResponseEntity<?> updateDepartment(@PathVariable Long id, @RequestBody Map<String, String> data) {
                 return departmentRepository.findById(id)
                                 .map(department -> {
@@ -83,14 +87,13 @@ public class DepartmentController {
          */
         @DeleteMapping("/delete/{id}")
         @PreAuthorize("hasRole('ADMIN')")
+        @org.springframework.cache.annotation.CacheEvict(value = { "departments",
+                        "departmentStats" }, allEntries = true)
         public ResponseEntity<?> deleteDepartment(@PathVariable Long id) {
                 return departmentRepository.findById(id)
                                 .map(department -> {
                                         // Check if department has employees
-                                        long empCount = employeeRepository.findAll().stream()
-                                                        .filter(emp -> emp.getDepartment() != null &&
-                                                                        emp.getDepartment().getId().equals(id))
-                                                        .count();
+                                        long empCount = employeeRepository.countByDepartmentId(id);
 
                                         if (empCount > 0) {
                                                 // Soft delete - just deactivate
@@ -116,6 +119,7 @@ public class DepartmentController {
          * GET /api/departments/list
          */
         @GetMapping("/list")
+        @org.springframework.cache.annotation.Cacheable("departments")
         public ResponseEntity<List<Department>> getAllDepartments(
                         @RequestParam(required = false, defaultValue = "false") boolean activeOnly) {
                 List<Department> departments = departmentRepository.findAll();
@@ -138,10 +142,8 @@ public class DepartmentController {
                 return departmentRepository.findById(id)
                                 .map(department -> {
                                         // Count employees in this department
-                                        long empCount = employeeRepository.findAll().stream()
-                                                        .filter(emp -> emp.getDepartment() != null &&
-                                                                        emp.getDepartment().getId().equals(id))
-                                                        .count();
+                                        // Count employees in this department
+                                        long empCount = employeeRepository.countByDepartmentId(id);
 
                                         return ResponseEntity.ok(Map.of(
                                                         "success", true,
@@ -157,16 +159,13 @@ public class DepartmentController {
          */
         @GetMapping("/stats")
         @PreAuthorize("hasAnyRole('ADMIN', 'HR')")
+        @org.springframework.cache.annotation.Cacheable("departmentStats")
         public ResponseEntity<?> getDepartmentStats() {
                 List<Department> departments = departmentRepository.findAll();
 
                 List<Map<String, Object>> stats = departments.stream()
                                 .map(dept -> {
-                                        long empCount = employeeRepository.findAll().stream()
-                                                        .filter(emp -> emp.getDepartment() != null &&
-                                                                        emp.getDepartment().getId()
-                                                                                        .equals(dept.getId()))
-                                                        .count();
+                                        long empCount = employeeRepository.countByDepartmentId(dept.getId());
 
                                         return Map.<String, Object>of(
                                                         "id", dept.getId(),

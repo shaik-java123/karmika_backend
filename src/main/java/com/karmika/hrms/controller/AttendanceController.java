@@ -37,17 +37,13 @@ public class AttendanceController {
                         Authentication auth) {
                 try {
                         String username = auth.getName();
-                        Employee employee = employeeRepository.findAll().stream()
-                                        .filter(emp -> emp.getUser() != null
-                                                        && emp.getUser().getUsername().equals(username))
-                                        .findFirst()
+                        Employee employee = employeeRepository.findByUserUsername(username)
                                         .orElseThrow(() -> new RuntimeException("Employee not found"));
 
                         // Check if already checked in today
                         LocalDate today = LocalDate.now();
-                        boolean alreadyCheckedIn = attendanceRepository.findAll().stream()
-                                        .anyMatch(att -> att.getEmployee().getId().equals(employee.getId()) &&
-                                                        att.getDate().equals(today));
+                        boolean alreadyCheckedIn = attendanceRepository.findByEmployeeAndDate(employee, today)
+                                        .isPresent();
 
                         if (alreadyCheckedIn) {
                                 return ResponseEntity.badRequest().body(Map.of(
@@ -97,18 +93,12 @@ public class AttendanceController {
                         Authentication auth) {
                 try {
                         String username = auth.getName();
-                        Employee employee = employeeRepository.findAll().stream()
-                                        .filter(emp -> emp.getUser() != null
-                                                        && emp.getUser().getUsername().equals(username))
-                                        .findFirst()
+                        Employee employee = employeeRepository.findByUserUsername(username)
                                         .orElseThrow(() -> new RuntimeException("Employee not found"));
 
                         // Find today's attendance record
                         LocalDate today = LocalDate.now();
-                        Attendance attendance = attendanceRepository.findAll().stream()
-                                        .filter(att -> att.getEmployee().getId().equals(employee.getId()) &&
-                                                        att.getDate().equals(today))
-                                        .findFirst()
+                        Attendance attendance = attendanceRepository.findByEmployeeAndDate(employee, today)
                                         .orElseThrow(() -> new RuntimeException("No check-in record found for today"));
 
                         if (attendance.getCheckOutTime() != null) {
@@ -162,24 +152,18 @@ public class AttendanceController {
                         Authentication auth) {
                 try {
                         String username = auth.getName();
-                        Employee employee = employeeRepository.findAll().stream()
-                                        .filter(emp -> emp.getUser() != null
-                                                        && emp.getUser().getUsername().equals(username))
-                                        .findFirst()
+                        Employee employee = employeeRepository.findByUserUsername(username)
                                         .orElseThrow(() -> new RuntimeException("Employee not found"));
 
-                        List<Attendance> records = attendanceRepository.findAll().stream()
-                                        .filter(att -> att.getEmployee().getId().equals(employee.getId()))
-                                        .filter(att -> {
-                                                if (from != null && to != null) {
-                                                        LocalDate fromDate = LocalDate.parse(from);
-                                                        LocalDate toDate = LocalDate.parse(to);
-                                                        return !att.getDate().isBefore(fromDate)
-                                                                        && !att.getDate().isAfter(toDate);
-                                                }
-                                                return true;
-                                        })
-                                        .toList();
+                        List<Attendance> records;
+                        if (from != null && to != null) {
+                                records = attendanceRepository.findByEmployeeAndDateBetween(
+                                                employee, LocalDate.parse(from), LocalDate.parse(to));
+                        } else {
+                                // Default to all for this employee or last 30 days
+                                records = attendanceRepository.findByEmployeeAndDateBetween(
+                                                employee, LocalDate.now().minusDays(30), LocalDate.now());
+                        }
 
                         return ResponseEntity.ok(Map.of(
                                         "success", true,
@@ -203,11 +187,7 @@ public class AttendanceController {
                         LocalDate targetDate = date != null ? LocalDate.parse(date) : LocalDate.now();
 
                         String username = auth.getName();
-                        Employee manager = employeeRepository.findAll().stream()
-                                        .filter(emp -> emp.getUser() != null
-                                                        && emp.getUser().getUsername().equals(username))
-                                        .findFirst()
-                                        .orElse(null);
+                        Employee manager = employeeRepository.findByUserUsername(username).orElse(null);
 
                         List<Attendance> records;
 
@@ -215,16 +195,13 @@ public class AttendanceController {
                         if (auth.getAuthorities().stream()
                                         .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN")
                                                         || a.getAuthority().equals("ROLE_HR"))) {
-                                records = attendanceRepository.findAll().stream()
-                                                .filter(att -> att.getDate().equals(targetDate))
-                                                .toList();
+                                records = attendanceRepository.findByDate(targetDate);
                         } else {
                                 // MANAGER - show only team attendance
                                 if (manager == null) {
                                         throw new RuntimeException("Manager not found");
                                 }
-                                records = attendanceRepository.findAll().stream()
-                                                .filter(att -> att.getDate().equals(targetDate))
+                                records = attendanceRepository.findByDate(targetDate).stream()
                                                 .filter(att -> att.getEmployee().getReportingManager() != null &&
                                                                 att.getEmployee().getReportingManager().getId()
                                                                                 .equals(manager.getId()))
@@ -251,10 +228,7 @@ public class AttendanceController {
         public ResponseEntity<List<Attendance>> getAllAttendance(@RequestParam(required = false) String date) {
                 if (date != null) {
                         LocalDate targetDate = LocalDate.parse(date);
-                        List<Attendance> records = attendanceRepository.findAll().stream()
-                                        .filter(att -> att.getDate().equals(targetDate))
-                                        .toList();
-                        return ResponseEntity.ok(records);
+                        return ResponseEntity.ok(attendanceRepository.findByDate(targetDate));
                 }
                 return ResponseEntity.ok(attendanceRepository.findAll());
         }
@@ -268,26 +242,18 @@ public class AttendanceController {
         public ResponseEntity<?> getAttendanceSummary(@RequestParam(required = false) String date) {
                 LocalDate targetDate = date != null ? LocalDate.parse(date) : LocalDate.now();
 
-                List<Attendance> records = attendanceRepository.findAll().stream()
-                                .filter(att -> att.getDate().equals(targetDate))
-                                .toList();
+                long present = attendanceRepository.countByDateAndStatusIn(targetDate,
+                                List.of(Attendance.AttendanceStatus.PRESENT,
+                                                Attendance.AttendanceStatus.WORK_FROM_HOME));
 
-                long present = records.stream()
-                                .filter(att -> att.getStatus() == Attendance.AttendanceStatus.PRESENT ||
-                                                att.getStatus() == Attendance.AttendanceStatus.WORK_FROM_HOME)
-                                .count();
+                long absent = attendanceRepository.countByDateAndStatus(targetDate,
+                                Attendance.AttendanceStatus.ABSENT);
 
-                long absent = records.stream()
-                                .filter(att -> att.getStatus() == Attendance.AttendanceStatus.ABSENT)
-                                .count();
-
-                long onLeave = records.stream()
-                                .filter(att -> att.getStatus() == Attendance.AttendanceStatus.ON_LEAVE)
-                                .count();
+                long onLeave = attendanceRepository.countByDateAndStatus(targetDate,
+                                Attendance.AttendanceStatus.ON_LEAVE);
 
                 return ResponseEntity.ok(Map.of(
                                 "date", targetDate,
-                                "totalRecords", records.size(),
                                 "present", present,
                                 "absent", absent,
                                 "onLeave", onLeave));
@@ -313,17 +279,11 @@ public class AttendanceController {
         public ResponseEntity<?> getTodayStatus(Authentication auth) {
                 try {
                         String username = auth.getName();
-                        Employee employee = employeeRepository.findAll().stream()
-                                        .filter(emp -> emp.getUser() != null
-                                                        && emp.getUser().getUsername().equals(username))
-                                        .findFirst()
+                        Employee employee = employeeRepository.findByUserUsername(username)
                                         .orElseThrow(() -> new RuntimeException("Employee not found"));
 
                         LocalDate today = LocalDate.now();
-                        Attendance todayAttendance = attendanceRepository.findAll().stream()
-                                        .filter(att -> att.getEmployee().getId().equals(employee.getId()) &&
-                                                        att.getDate().equals(today))
-                                        .findFirst()
+                        Attendance todayAttendance = attendanceRepository.findByEmployeeAndDate(employee, today)
                                         .orElse(null);
 
                         if (todayAttendance == null) {

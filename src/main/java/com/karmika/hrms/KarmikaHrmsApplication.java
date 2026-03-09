@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 
 @SpringBootApplication
 @EnableJpaAuditing
+@org.springframework.cache.annotation.EnableCaching
 public class KarmikaHrmsApplication {
 
     public static void main(String[] args) {

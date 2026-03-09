@@ -12,4 +12,6 @@ public interface HolidayRepository extends JpaRepository<Holiday, Long> {
     List<Holiday> findByDateBetweenOrderByDateAsc(LocalDate startDate, LocalDate endDate);
 
     List<Holiday> findAllByOrderByDateAsc();
+
+    java.util.Optional<Holiday> findByDate(LocalDate date);
 }
